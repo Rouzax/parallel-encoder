@@ -300,45 +300,12 @@ presets:
     subtitles: all
 
   # ─────────────────────────────────────────────────────────────
-  # Xpeng codec comparison test presets (720p, AAC audio)
-  # Use --test-encode to compare a short segment across codecs
+  # Xpeng codec comparison test presets (720p, WebM + Opus)
+  # WebM container required for Plex Web direct-play in car
   # ─────────────────────────────────────────────────────────────
-  xpeng-test-h264-720p:
-    display_name: "XPENG TEST - MKV - 720p - H264 - RF23"
-    container: mkv
-    video:
-      codec: libx264
-      crf: 23
-      preset: medium
-      max_width: 1280
-      max_height: 720
-      pix_fmt: yuv420p
-    audio:
-      mode: transcode
-      codec: aac
-      bitrate: "128k"
-    subtitles: none
-
-  xpeng-test-h265-720p:
-    display_name: "XPENG TEST - MKV - 720p - H265 - RF25"
-    container: mkv
-    video:
-      codec: libx265
-      profile: main10
-      crf: 25
-      preset: medium
-      max_width: 1280
-      max_height: 720
-      pix_fmt: yuv420p10le
-    audio:
-      mode: transcode
-      codec: aac
-      bitrate: "128k"
-    subtitles: none
-
   xpeng-test-vp9-720p:
-    display_name: "XPENG TEST - MKV - 720p - VP9 - RF36"
-    container: mkv
+    display_name: "XPENG TEST - WEBM - 720p - VP9 - RF36"
+    container: webm
     video:
       codec: libvpx-vp9
       crf: 36
@@ -348,38 +315,38 @@ presets:
       pix_fmt: yuv420p
     audio:
       mode: transcode
-      codec: aac
+      codec: libopus
       bitrate: "128k"
     subtitles: none
 
-  xpeng-test-av1-720p:
-    display_name: "XPENG TEST - MKV - 720p - AV1 - CRF36"
-    container: mkv
+  xpeng-test-vp9-slow-720p:
+    display_name: "XPENG TEST - WEBM - 720p - VP9 Slow - RF36"
+    container: webm
     video:
-      codec: libsvtav1
+      codec: libvpx-vp9
       crf: 36
-      preset: 8
+      speed: 1
       max_width: 1280
       max_height: 720
-      pix_fmt: yuv420p10le
+      pix_fmt: yuv420p
     audio:
       mode: transcode
-      codec: aac
+      codec: libopus
       bitrate: "128k"
     subtitles: none
 
-  xpeng-test-av1-fast-720p:
-    display_name: "XPENG TEST - MKV - 720p - AV1 Fast - CRF36"
-    container: mkv
+  xpeng-test-vp9-quality-720p:
+    display_name: "XPENG TEST - WEBM - 720p - VP9 - RF33"
+    container: webm
     video:
-      codec: libsvtav1
-      crf: 36
-      preset: 10
+      codec: libvpx-vp9
+      crf: 33
+      speed: 2
       max_width: 1280
       max_height: 720
-      pix_fmt: yuv420p10le
+      pix_fmt: yuv420p
     audio:
       mode: transcode
-      codec: aac
+      codec: libopus
       bitrate: "128k"
     subtitles: none
