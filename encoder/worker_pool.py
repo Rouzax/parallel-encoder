@@ -366,6 +366,16 @@ class ParallelEncoder:
                 )
             )
 
+        # Check for output path collisions
+        seen_outputs: dict[str, str] = {}  # output_path -> source_path
+        for job in jobs:
+            if job.output_path in seen_outputs:
+                raise ValueError(
+                    f"Output path collision: both '{seen_outputs[job.output_path]}' "
+                    f"and '{job.source_path}' would write to '{job.output_path}'"
+                )
+            seen_outputs[job.output_path] = job.source_path
+
         return jobs
 
     # ------------------------------------------------------------------
