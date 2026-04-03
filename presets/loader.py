@@ -10,6 +10,47 @@ from typing import Any
 
 import yaml
 
+_REQUIRED_VIDEO_KEYS = {"codec", "crf"}
+_VALID_AUDIO_MODES = {"passthrough", "transcode"}
+
+
+def validate_preset(key: str, preset: dict) -> None:
+    """Validate a preset dict and raise ValueError with a clear message on problems.
+
+    Args:
+        key: The preset key (used in error messages).
+        preset: The preset configuration dict.
+
+    Raises:
+        ValueError: If the preset is missing required fields.
+    """
+    if "display_name" not in preset:
+        raise ValueError(f"Preset '{key}': missing 'display_name'")
+
+    if "video" not in preset:
+        raise ValueError(f"Preset '{key}': missing 'video' section")
+
+    video = preset["video"]
+    for req in _REQUIRED_VIDEO_KEYS:
+        if req not in video:
+            raise ValueError(f"Preset '{key}': missing video.{req}")
+
+    if "audio" not in preset:
+        raise ValueError(f"Preset '{key}': missing 'audio' section")
+
+    audio = preset["audio"]
+    if "mode" not in audio:
+        raise ValueError(f"Preset '{key}': missing audio.mode")
+
+    if audio["mode"] not in _VALID_AUDIO_MODES:
+        raise ValueError(
+            f"Preset '{key}': audio.mode must be one of {_VALID_AUDIO_MODES}, "
+            f"got '{audio['mode']}'"
+        )
+
+    if audio["mode"] == "transcode" and "codec" not in audio:
+        raise ValueError(f"Preset '{key}': audio.mode is 'transcode' but no audio.codec specified")
+
 
 def load_presets(path: str | Path) -> dict[str, dict[str, Any]]:
     """Load presets from a YAML file.
@@ -30,7 +71,10 @@ def load_presets(path: str | Path) -> dict[str, dict[str, Any]]:
         data = yaml.safe_load(fh)
     if "presets" not in data:
         raise KeyError("YAML file is missing the top-level 'presets' key")
-    return data["presets"]
+    presets = data["presets"]
+    for key, cfg in presets.items():
+        validate_preset(key, cfg)
+    return presets
 
 
 def list_preset_names(presets: dict[str, dict[str, Any]]) -> list[str]:
@@ -135,9 +179,9 @@ def preset_to_ffmpeg_args(
     max_w: int | None = video.get("max_width")
     max_h: int | None = video.get("max_height")
     if max_w is not None and max_h is not None:
-        src_w: int = source_info["video_width"]
-        src_h: int = source_info["video_height"]
-        if src_w > max_w or src_h > max_h:
+        src_w = source_info.get("video_width")
+        src_h = source_info.get("video_height")
+        if src_w is not None and src_h is not None and (src_w > max_w or src_h > max_h):
             args.extend([
                 "-vf",
                 f"scale={max_w}:{max_h}:force_original_aspect_ratio=decrease",
