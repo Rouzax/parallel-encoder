@@ -175,17 +175,30 @@ def preset_to_ffmpeg_args(
     if video.get("profile"):
         args.extend(["-profile:v", video["profile"]])
 
-    # ── Resolution scaling (never upscale) ──────────────────────
+    # ── Video filters (scale + colorspace, combined into one -vf) ──
+    vf_filters: list[str] = []
+
     max_w: int | None = video.get("max_width")
     max_h: int | None = video.get("max_height")
     if max_w is not None and max_h is not None:
         src_w = source_info.get("video_width")
         src_h = source_info.get("video_height")
         if src_w is not None and src_h is not None and (src_w > max_w or src_h > max_h):
-            args.extend([
-                "-vf",
-                f"scale={max_w}:{max_h}:force_original_aspect_ratio=decrease",
-            ])
+            vf_filters.append(
+                f"scale={max_w}:{max_h}:force_original_aspect_ratio=decrease"
+            )
+
+    colorspace: str | None = video.get("colorspace")
+    if colorspace == "bt709":
+        vf_filters.append("colorspace=all=bt709:iall=bt601-6-625")
+
+    if vf_filters:
+        args.extend(["-vf", ",".join(vf_filters)])
+
+    # ── Frame rate mode ────────────────────────────────────────
+    fps_mode: str | None = video.get("fps_mode")
+    if fps_mode:
+        args.extend(["-fps_mode", fps_mode])
 
     # ── Audio codec ─────────────────────────────────────────────
     if audio["mode"] == "passthrough":
