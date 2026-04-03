@@ -7,25 +7,34 @@ import subprocess
 from pathlib import Path
 
 
+FFPROBE_TIMEOUT_SECONDS = 30
+
+
 def probe_file(path: str | Path) -> dict:
     """Run ffprobe on a single file and return a normalised info dict.
 
-    Raises RuntimeError if ffprobe exits with a non-zero status or the
-    output cannot be parsed.
+    Raises RuntimeError if ffprobe exits with a non-zero status, times out,
+    or the output cannot be parsed.
     """
     path = Path(path).resolve()
 
-    result: subprocess.CompletedProcess[str] = subprocess.run(
-        [
-            "ffprobe",
-            "-v", "quiet",
-            "-print_format", "json",
-            "-show_format", "-show_streams",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result: subprocess.CompletedProcess[str] = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_format", "-show_streams",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=FFPROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"ffprobe timed out after {FFPROBE_TIMEOUT_SECONDS}s for {path}"
+        )
 
     if result.returncode != 0:
         stderr: str = result.stderr.strip()
