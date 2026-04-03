@@ -298,3 +298,71 @@ presets:
     audio:
       mode: passthrough
     subtitles: all
+
+  # ─────────────────────────────────────────────────────────────
+  # Xpeng codec comparison test presets (720p, AAC audio)
+  # Use --test-encode to compare a short segment across codecs
+  # ─────────────────────────────────────────────────────────────
+  xpeng-test-h264-720p:
+    display_name: "XPENG TEST - MP4 - 720p - H264 - RF23"
+    container: mp4
+    video:
+      codec: libx264
+      crf: 23
+      preset: medium
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+    audio:
+      mode: transcode
+      codec: aac
+      bitrate: "128k"
+    subtitles: none
+
+  xpeng-test-vp9-720p:
+    display_name: "XPENG TEST - WEBM - 720p - VP9 - RF36"
+    container: webm
+    video:
+      codec: libvpx-vp9
+      crf: 36
+      speed: 2
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
+
+  xpeng-test-av1-720p:
+    display_name: "XPENG TEST - MP4 - 720p - AV1 - CRF36"
+    container: mp4
+    video:
+      codec: libsvtav1
+      crf: 36
+      preset: 8
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+    audio:
+      mode: transcode
+      codec: aac
+      bitrate: "128k"
+    subtitles: none
+
+  xpeng-test-av1-fast-720p:
+    display_name: "XPENG TEST - MP4 - 720p - AV1 Fast - CRF36"
+    container: mp4
+    video:
+      codec: libsvtav1
+      crf: 36
+      preset: 10
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+    audio:
+      mode: transcode
+      codec: aac
+      bitrate: "128k"
+    subtitles: none
