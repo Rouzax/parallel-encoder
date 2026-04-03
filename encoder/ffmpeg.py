@@ -127,7 +127,10 @@ def build_command(
     args = list(preset_args)
 
     # Thread control --------------------------------------------------------
-    thread_args: list[str] = ["-threads", str(threads)]
+    effective_threads = threads
+    if "libx265" in args:
+        effective_threads = min(threads, _X265_MAX_THREADS)
+    thread_args: list[str] = ["-threads", str(effective_threads)]
 
     if "libx265" in args:
         pools_param = _x265_pools_param(threads)
