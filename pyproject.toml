@@ -9,6 +9,12 @@ dependencies = [
     "rich>=13.0",
 ]
 
+[tool.setuptools]
+py-modules = ["encode", "logger"]
+
+[tool.setuptools.packages.find]
+include = ["encoder*", "presets*", "ui*"]
+
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-tmp-files>=0.0.2"]
 
