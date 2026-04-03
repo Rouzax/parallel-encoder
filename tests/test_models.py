@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from encoder.models import SourceFileInfo, PresetConfig, VideoConfig, AudioConfig
+from encoder.models import SourceFileInfo, PresetConfig
 
 
 def test_source_file_info_from_probe_dict(sample_source_info):
