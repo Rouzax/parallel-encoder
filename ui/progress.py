@@ -230,7 +230,7 @@ def print_summary_table(
     for sf in source_files:
         filename: str = sf["filename"]
         source_codec: str = sf.get("video_codec") or "N/A"
-        source_bitrate: str = format_bitrate(sf.get("video_bitrate"))
+        source_bitrate: str = format_bitrate(sf.get("video_bitrate") or sf.get("total_bitrate"))
         source_size: str = format_size(sf.get("file_size", 0))
 
         result = result_by_source.get(filename)
@@ -244,7 +244,7 @@ def print_summary_table(
         tf = target_by_name.get(filename)
         if tf is not None:
             target_codec = tf.get("video_codec") or "N/A"
-            target_bitrate = format_bitrate(tf.get("video_bitrate"))
+            target_bitrate = format_bitrate(tf.get("video_bitrate") or tf.get("total_bitrate"))
             target_size = format_size(tf.get("file_size", 0))
 
             src_sz: int = sf.get("file_size", 0)
