@@ -207,6 +207,7 @@ def _run_encoding(
     help="Number of parallel workers. Auto-detected if omitted.",
 )
 @click.option("--test-encode", is_flag=True, help="Run a test encode before full encode.")
+@click.option("--test-only", is_flag=True, help="Run test encode and exit (no prompt, no full encode).")
 @click.option("--test-seconds", default=120, type=int, help="Duration of test encode in seconds.")
 @click.option("--copy-all", is_flag=True, help="Copy non-video files to the output folder.")
 @click.option("--dry-run", is_flag=True, help="Print FFmpeg commands without executing.")
@@ -219,6 +220,7 @@ def main(
     preset_file: str | None,
     workers: int | None,
     test_encode: bool,
+    test_only: bool,
     test_seconds: int,
     copy_all: bool,
     dry_run: bool,
@@ -329,6 +331,8 @@ def main(
     console.print(src_table)
 
     # ── Test encode workflow ────────────────────────────────────────
+    if test_only:
+        test_encode = True
     if test_encode and not dry_run:
         while True:
             console.print("\n[bold yellow]Running test encode...[/bold yellow]")
@@ -347,6 +351,12 @@ def main(
             # Probe test outputs for comparison.
             test_target_files = probe_folder(output, extensions=video_extensions)
             print_summary_table(source_files, test_results, test_target_files)
+
+            if test_only:
+                # Keep the test output files and exit
+                successful = sum(1 for r in test_results if r.success)
+                console.print(f"\n[bold green]Test encode done.[/bold green] {successful}/{len(test_results)} file(s) encoded.")
+                sys.exit(0)
 
             proceed = Prompt.ask(
                 "\nIs the bitrate acceptable?",
