@@ -56,6 +56,15 @@ def _select_preset_interactive(presets: dict[str, dict[str, Any]]) -> tuple[str,
         console.print("[red]Invalid selection, try again.[/red]")
 
 
+def _cleanup_test_outputs(output_paths: list[str]) -> None:
+    """Remove only the files that the test encode created."""
+    for path_str in output_paths:
+        try:
+            Path(path_str).unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _copy_non_video_files(
     source_folder: Path,
     output_folder: Path,
@@ -346,9 +355,9 @@ def main(
                 console=console,
             )
 
-            # Clean up test output.
-            shutil.rmtree(output)
-            Path(output).mkdir(parents=True, exist_ok=True)
+            # Clean up only the test output files (not the entire directory)
+            test_output_paths = [r.output_path for r in test_results]
+            _cleanup_test_outputs(test_output_paths)
 
             if proceed == "y":
                 break
