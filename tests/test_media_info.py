@@ -44,7 +44,6 @@ def test_format_size_zero():
     assert format_size(0) == "0 B"
 
 
-import os
 from unittest.mock import patch as mock_patch
 
 
