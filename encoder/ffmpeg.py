@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
 import time
 from dataclasses import dataclass
 from typing import Callable
+
+_log = logging.getLogger("parallel-encoder")
 
 
 @dataclass
@@ -217,6 +220,7 @@ def run_encode(
             stderr=subprocess.PIPE,
             text=True,
         )
+        _log.debug("FFmpeg command: %s", " ".join(command))
 
         assert process.stderr is not None  # for type checkers
 
@@ -231,6 +235,8 @@ def run_encode(
 
         process.wait()
         encoding_time = time.monotonic() - start_time
+
+        _log.debug("FFmpeg completed: exit=%d time=%.1fs source=%s", process.returncode, encoding_time, source)
 
         success = process.returncode == 0
         error_message: str | None = None

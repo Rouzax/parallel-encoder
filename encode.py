@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sys
 from pathlib import Path
@@ -107,6 +108,11 @@ def _run_encoding(
         test_seconds=test_seconds,
     )
 
+    _log = logging.getLogger("parallel-encoder")
+    for job in jobs:
+        _log.debug("Prepared job: source=%s output=%s threads=%d numa=%s",
+                    job.source_path, job.output_path, job.threads, job.numa_node)
+
     if dry_run:
         from encoder.ffmpeg import build_command
 
@@ -195,6 +201,8 @@ def _run_encoding(
 @click.option("--test-seconds", default=120, type=int, help="Duration of test encode in seconds.")
 @click.option("--copy-all", is_flag=True, help="Copy non-video files to the output folder.")
 @click.option("--dry-run", is_flag=True, help="Print FFmpeg commands without executing.")
+@click.option("-v", "--verbose", count=True, help="Increase verbosity (-v info, -vv debug).")
+@click.option("--log-file", default=None, type=click.Path(dir_okay=False), help="Write debug log to file.")
 def main(
     source: str,
     output: str,
@@ -205,12 +213,17 @@ def main(
     test_seconds: int,
     copy_all: bool,
     dry_run: bool,
+    verbose: int,
+    log_file: str | None,
 ) -> None:
     """Parallel video encoder using FFmpeg.
 
     Encodes video files from SOURCE folder to OUTPUT folder using the selected
     preset, running multiple FFmpeg processes in parallel.
     """
+    from logger import setup_logging
+    log = setup_logging(verbosity=verbose, log_file=log_file)
+
     # ── Check dependencies ──────────────────────────────────────────
     try:
         ffmpeg_path = find_ffmpeg()
@@ -219,7 +232,7 @@ def main(
         console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
-    console.print(f"[dim]Using ffmpeg: {ffmpeg_path}[/dim]")
+    log.info("Using ffmpeg: %s", ffmpeg_path)
 
     # ── Load presets ────────────────────────────────────────────────
     pf = Path(preset_file) if preset_file else _DEFAULT_PRESET_FILE
@@ -229,7 +242,7 @@ def main(
         console.print(f"[red]Error loading presets:[/red] {e}")
         sys.exit(1)
 
-    console.print(f"[dim]Loaded {len(presets)} preset(s) from {pf}[/dim]")
+    log.info("Loaded %d preset(s) from %s", len(presets), pf)
 
     # ── Select preset ───────────────────────────────────────────────
     if preset:
@@ -250,11 +263,8 @@ def main(
     codec = preset_cfg["video"]["codec"]
     topo = detect_topology()
 
-    console.print(
-        f"[dim]CPU: {topo.sockets} socket(s), {topo.cores_per_socket} cores/socket, "
-        f"{topo.threads_per_core} threads/core = {topo.total_threads} threads, "
-        f"{topo.numa_nodes} NUMA node(s)[/dim]"
-    )
+    log.info("CPU: %d socket(s), %d cores/socket, %d threads/core = %d threads, %d NUMA node(s)",
+             topo.sockets, topo.cores_per_socket, topo.threads_per_core, topo.total_threads, topo.numa_nodes)
 
     if workers:
         worker_cfg = WorkerConfig(
@@ -272,10 +282,7 @@ def main(
     elif worker_cfg.numa_strategy == "spread":
         numa_info = ", NUMA: spread (worker needs more threads than one node)"
 
-    console.print(
-        f"[dim]Workers: {worker_cfg.num_workers}, "
-        f"threads/worker: {worker_cfg.threads_per_worker}{numa_info}[/dim]"
-    )
+    log.info("Workers: %d, threads/worker: %d%s", worker_cfg.num_workers, worker_cfg.threads_per_worker, numa_info)
 
     # ── Create output directory ─────────────────────────────────────
     Path(output).mkdir(parents=True, exist_ok=True)
@@ -382,9 +389,9 @@ def main(
 
     # ── Copy non-video files ────────────────────────────────────────
     if copy_all:
-        console.print("\n[dim]Copying non-video files...[/dim]")
+        log.info("Copying non-video files...")
         count = _copy_non_video_files(Path(source), Path(output), video_extensions)
-        console.print(f"[dim]Copied {count} non-video file(s).[/dim]")
+        log.info("Copied %d non-video file(s).", count)
 
     successful = sum(1 for r in results if r.success)
     console.print(f"\n[bold green]Done![/bold green] {successful}/{len(results)} file(s) encoded successfully.")
