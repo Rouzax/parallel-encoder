@@ -1,0 +1,158 @@
+"""Preset loader and FFmpeg argument builder for parallel-encoder.
+
+Loads YAML preset definitions and converts them into FFmpeg CLI argument lists.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+def load_presets(path: str | Path) -> dict[str, dict[str, Any]]:
+    """Load presets from a YAML file.
+
+    Args:
+        path: Path to the presets YAML file.
+
+    Returns:
+        Dictionary mapping preset key to its configuration dict.
+
+    Raises:
+        FileNotFoundError: If the YAML file does not exist.
+        yaml.YAMLError: If the file contains invalid YAML.
+        KeyError: If the top-level ``presets`` key is missing.
+    """
+    path = Path(path)
+    with path.open("r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh)
+    if "presets" not in data:
+        raise KeyError("YAML file is missing the top-level 'presets' key")
+    return data["presets"]
+
+
+def list_preset_names(presets: dict[str, dict[str, Any]]) -> list[str]:
+    """Return a sorted list of human-readable display names.
+
+    Args:
+        presets: The dict returned by :func:`load_presets`.
+
+    Returns:
+        Alphabetically sorted list of ``display_name`` values.
+    """
+    return sorted(cfg["display_name"] for cfg in presets.values())
+
+
+def get_preset_by_name(
+    presets: dict[str, dict[str, Any]], display_name: str
+) -> tuple[str, dict[str, Any]]:
+    """Look up a preset by its display name.
+
+    Args:
+        presets: The dict returned by :func:`load_presets`.
+        display_name: The human-readable name to search for.
+
+    Returns:
+        A ``(key, config)`` tuple for the matching preset.
+
+    Raises:
+        ValueError: If no preset matches the given display name.
+    """
+    for key, cfg in presets.items():
+        if cfg["display_name"] == display_name:
+            return key, cfg
+    raise ValueError(f"No preset with display_name '{display_name}'")
+
+
+def preset_to_ffmpeg_args(
+    preset: dict[str, Any],
+    source_info: dict[str, Any],
+) -> list[str]:
+    """Convert a preset configuration and source media info into FFmpeg CLI args.
+
+    The returned list is suitable for passing to ``subprocess.run(["ffmpeg", ...] + args)``.
+    It does **not** include the ``ffmpeg`` binary, the input ``-i`` flag, or the output path.
+
+    Args:
+        preset: A single preset configuration dict (the *value* from :func:`load_presets`).
+        source_info: Information about the source file with keys:
+            - ``video_width``  (int): source video width in pixels
+            - ``video_height`` (int): source video height in pixels
+            - ``audio_streams`` (list[dict]): each dict has ``codec``, ``language``, ``channels``
+
+    Returns:
+        List of FFmpeg CLI argument strings.
+    """
+    args: list[str] = []
+    video: dict[str, Any] = preset["video"]
+    audio: dict[str, Any] = preset["audio"]
+    subtitles: str = preset.get("subtitles", "none")
+
+    # ── Stream mapping ──────────────────────────────────────────
+    # Video stream — always first video
+    args.extend(["-map", "0:v:0"])
+
+    # Audio stream mapping
+    language: str | None = audio.get("language")
+    if language:
+        args.extend(["-map", f"0:a:m:language:{language}"])
+    else:
+        args.extend(["-map", "0:a"])
+
+    # Subtitle stream mapping
+    if subtitles == "all":
+        args.extend(["-map", "0:s?"])
+    elif subtitles == "first":
+        args.extend(["-map", "0:s:0?"])
+    # "none" — no subtitle mapping
+
+    # ── Video codec ─────────────────────────────────────────────
+    codec: str = video["codec"]
+    args.extend(["-c:v", codec])
+    args.extend(["-crf", str(video["crf"])])
+
+    if codec == "libvpx-vp9":
+        # VP9 uses -speed instead of -preset, and needs -b:v 0 for CRF mode
+        args.extend(["-b:v", "0"])
+        args.extend(["-speed", str(video["speed"])])
+    elif codec == "libsvtav1":
+        args.extend(["-preset", str(video["preset"])])
+    else:
+        # libx265 / libx264
+        args.extend(["-preset", str(video["preset"])])
+
+    # Pixel format
+    if "pix_fmt" in video:
+        args.extend(["-pix_fmt", video["pix_fmt"]])
+
+    # Codec-specific profile params
+    if codec == "libx265" and video.get("profile") == "main10":
+        args.extend(["-x265-params", "profile=main10"])
+
+    # ── Resolution scaling (never upscale) ──────────────────────
+    max_w: int | None = video.get("max_width")
+    max_h: int | None = video.get("max_height")
+    if max_w is not None and max_h is not None:
+        src_w: int = source_info["video_width"]
+        src_h: int = source_info["video_height"]
+        if src_w > max_w or src_h > max_h:
+            args.extend([
+                "-vf",
+                f"scale={max_w}:{max_h}:force_original_aspect_ratio=decrease",
+            ])
+
+    # ── Audio codec ─────────────────────────────────────────────
+    if audio["mode"] == "passthrough":
+        args.extend(["-c:a", "copy"])
+    else:
+        args.extend(["-c:a", audio["codec"]])
+        if "bitrate" in audio:
+            args.extend(["-b:a", audio["bitrate"]])
+
+    # ── Subtitles codec ─────────────────────────────────────────
+    if subtitles in ("all", "first"):
+        args.extend(["-c:s", "copy"])
+
+    return args

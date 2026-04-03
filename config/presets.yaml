@@ -1,0 +1,300 @@
+presets:
+  # ─────────────────────────────────────────────────────────────
+  # H.265 10-bit — 1080p presets
+  # ─────────────────────────────────────────────────────────────
+  mkv-1080p-h265-10bit-medium-cq20-all-audio:
+    display_name: "MKV - 1080p - H265 10-bit - Medium CQ20 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 20
+      preset: medium
+      max_width: 1920
+      max_height: 1080
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-1080p-h265-10bit-medium-cq25-all-audio:
+    display_name: "MKV - 1080p - H265 10-bit - Medium CQ25 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 25
+      preset: medium
+      max_width: 1920
+      max_height: 1080
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-1080p-h265-10bit-medium-cq30-all-audio:
+    display_name: "MKV - 1080p - H265 10-bit - Medium CQ30 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 30
+      preset: medium
+      max_width: 1920
+      max_height: 1080
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  # ─────────────────────────────────────────────────────────────
+  # H.265 10-bit — native resolution presets (no scaling)
+  # ─────────────────────────────────────────────────────────────
+  mkv-h265-10bit-medium-cq20-all-audio:
+    display_name: "MKV - H265 10-bit - Medium CQ20 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 20
+      preset: medium
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-h265-10bit-medium-cq21-all-audio:
+    display_name: "MKV - H265 10-bit - Medium CQ21 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 21
+      preset: medium
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-h265-10bit-medium-cq25-all-audio:
+    display_name: "MKV - H265 10-bit - Medium CQ25 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 25
+      preset: medium
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-h265-10bit-medium-cq30-all-audio:
+    display_name: "MKV - H265 10-bit - Medium CQ30 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 30
+      preset: medium
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  # ─────────────────────────────────────────────────────────────
+  # H.265 10-bit — 720p BT.709 presets (language-specific audio)
+  # ─────────────────────────────────────────────────────────────
+  mkv-720p-h265-10bit-bt709-faster-rf25-dutch:
+    display_name: "MKV - 720p - H265 10-bit - BT.709 - Faster RF25 - Dutch Audio"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 25
+      preset: faster
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+    audio:
+      mode: transcode
+      codec: aac
+      bitrate: "160k"
+      language: nld
+    subtitles: first
+
+  mkv-720p-h265-10bit-bt709-faster-rf25-english:
+    display_name: "MKV - 720p - H265 10-bit - BT.709 - Faster RF25 - English Audio"
+    container: mkv
+    video:
+      codec: libx265
+      profile: main10
+      crf: 25
+      preset: faster
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+    audio:
+      mode: transcode
+      codec: aac
+      bitrate: "160k"
+      language: eng
+    subtitles: first
+
+  # ─────────────────────────────────────────────────────────────
+  # H.265 10-bit — 5K presets (MP4 container)
+  # ─────────────────────────────────────────────────────────────
+  mp4-5k-h265-10bit-slow-rf20-all-audio:
+    display_name: "MP4 - 5k - H265 10-bit - Slow RF20 - All Audio Passthru"
+    container: mp4
+    video:
+      codec: libx265
+      profile: main10
+      crf: 20
+      preset: slow
+      max_width: 5400
+      max_height: 2700
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: none
+
+  mp4-5k-h265-10bit-medium-rf22-all-audio:
+    display_name: "MP4 - 5k - H265 10-bit - Medium RF22 - All Audio Passthru"
+    container: mp4
+    video:
+      codec: libx265
+      profile: main10
+      crf: 22
+      preset: medium
+      max_width: 5400
+      max_height: 2700
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: none
+
+  mp4-5k-h265-10bit-medium-rf23-all-audio:
+    display_name: "MP4 - 5k - H265 10-bit - Medium RF23 - All Audio Passthru"
+    container: mp4
+    video:
+      codec: libx265
+      profile: main10
+      crf: 23
+      preset: medium
+      max_width: 5400
+      max_height: 2700
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: none
+
+  # ─────────────────────────────────────────────────────────────
+  # VP9 — 720p BT.709 presets (WebM container)
+  # ─────────────────────────────────────────────────────────────
+  webm-720p-vp9-bt709-medium-rf33-all-audio:
+    display_name: "WEBM - 720p - VP9 - BT.709 - Medium RF33 - All Audio Passthru"
+    container: webm
+    video:
+      codec: libvpx-vp9
+      crf: 33
+      speed: 2
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+    audio:
+      mode: passthrough
+    subtitles: none
+
+  webm-720p-vp9-bt709-medium-rf36-all-audio:
+    display_name: "WEBM - 720p - VP9 - BT.709 - Medium RF36 - All Audio Passthru"
+    container: webm
+    video:
+      codec: libvpx-vp9
+      crf: 36
+      speed: 2
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+    audio:
+      mode: passthrough
+    subtitles: none
+
+  webm-720p-vp9-bt709-slow-rf36-all-audio:
+    display_name: "WEBM - 720p - VP9 - BT.709 - Slow RF36 - All Audio Passthru"
+    container: webm
+    video:
+      codec: libvpx-vp9
+      crf: 36
+      speed: 1
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+    audio:
+      mode: passthrough
+    subtitles: none
+
+  # ─────────────────────────────────────────────────────────────
+  # H.264 — 720p BT.709 preset
+  # ─────────────────────────────────────────────────────────────
+  mkv-720p-h264-bt709-medium-rf25-english:
+    display_name: "MKV - 720p - H264 - BT.709 - Medium RF25 - English Audio"
+    container: mkv
+    video:
+      codec: libx264
+      crf: 25
+      preset: medium
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+    audio:
+      mode: transcode
+      codec: aac
+      bitrate: "160k"
+      language: eng
+    subtitles: first
+
+  # ─────────────────────────────────────────────────────────────
+  # AV1 (SVT-AV1) presets
+  # ─────────────────────────────────────────────────────────────
+  mkv-1080p-av1-crf22-all-audio:
+    display_name: "MKV - 1080p - AV1 - CRF22 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 22
+      preset: 6
+      max_width: 1920
+      max_height: 1080
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-1080p-av1-crf28-all-audio:
+    display_name: "MKV - 1080p - AV1 - CRF28 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 28
+      preset: 6
+      max_width: 1920
+      max_height: 1080
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-720p-av1-crf28-all-audio:
+    display_name: "MKV - 720p - AV1 - CRF28 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 28
+      preset: 6
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+    audio:
+      mode: passthrough
+    subtitles: all
