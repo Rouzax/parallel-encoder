@@ -22,7 +22,7 @@ def probe_file(path: str | Path) -> dict:
     path = Path(path).resolve()
 
     try:
-        result: subprocess.CompletedProcess[str] = subprocess.run(
+        result: subprocess.CompletedProcess[bytes] = subprocess.run(
             [
                 "ffprobe",
                 "-v", "quiet",
@@ -31,7 +31,6 @@ def probe_file(path: str | Path) -> dict:
                 str(path),
             ],
             capture_output=True,
-            text=True,
             timeout=FFPROBE_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
@@ -40,14 +39,15 @@ def probe_file(path: str | Path) -> dict:
         )
 
     if result.returncode != 0:
-        stderr: str = result.stderr.strip()
+        stderr_text = result.stderr.decode("utf-8", errors="replace").strip()
         raise RuntimeError(
-            f"ffprobe failed for {path} (exit {result.returncode}): {stderr}"
+            f"ffprobe failed for {path} (exit {result.returncode}): {stderr_text}"
         )
 
+    stdout_text = result.stdout.decode("utf-8", errors="replace")
     try:
-        data: dict = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
+        data: dict = json.loads(stdout_text)
+    except (json.JSONDecodeError, TypeError) as exc:
         raise RuntimeError(f"Failed to parse ffprobe JSON for {path}") from exc
 
     fmt: dict = data.get("format", {})

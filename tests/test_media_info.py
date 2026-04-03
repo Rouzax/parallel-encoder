@@ -22,7 +22,7 @@ def test_probe_file_nonzero_exit_raises():
     """ffprobe returning non-zero should raise RuntimeError."""
     with patch("encoder.media_info.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(
-            args=["ffprobe"], returncode=1, stdout="", stderr="some error"
+            args=["ffprobe"], returncode=1, stdout=b"", stderr=b"some error"
         )
         with pytest.raises(RuntimeError, match="ffprobe failed"):
             probe_file("/fake/video.mkv")
