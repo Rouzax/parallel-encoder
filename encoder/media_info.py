@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 
+
+_log = logging.getLogger("parallel-encoder")
 
 FFPROBE_TIMEOUT_SECONDS = 30
 
@@ -95,6 +98,11 @@ def probe_file(path: str | Path) -> dict:
     file_size_raw: str | None = fmt.get("size")
     file_size: int = int(file_size_raw) if file_size_raw is not None else 0
 
+    _log.debug(
+        "Probed %s: codec=%s, %sx%s, bitrate=%s, duration=%.1fs",
+        path.name, video_codec, video_width, video_height, total_bitrate, duration,
+    )
+
     return {
         "path": str(path),
         "filename": path.stem,
@@ -138,6 +146,8 @@ def probe_folder(
         ),
         key=lambda p: p.stem.lower(),
     )
+
+    _log.info("Found %d video file(s) in %s", len(files), folder)
 
     results: list[dict] = []
     for f in files:

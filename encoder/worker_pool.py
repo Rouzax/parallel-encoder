@@ -6,6 +6,7 @@ distributing CPU threads across workers based on codec and NUMA topology.
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import subprocess
@@ -17,6 +18,8 @@ from typing import Callable
 
 from encoder.ffmpeg import EncodingResult, build_command, find_ffmpeg, run_encode
 from presets.loader import preset_to_ffmpeg_args
+
+_log = logging.getLogger("parallel-encoder")
 
 # Default threads-per-worker by codec name.
 _CODEC_THREADS: dict[str, int] = {
@@ -76,6 +79,8 @@ def _detect_linux(total_threads: int) -> CpuTopology:
                 key, _, val = line.partition(":")
                 fields[key.strip()] = val.strip()
 
+        _log.debug("lscpu raw fields: %s", fields)
+
         sockets = int(fields.get("Socket(s)", "1"))
         cores_per_socket = int(fields.get("Core(s) per socket", str(total_threads // max(sockets, 1))))
         threads_per_core = int(fields.get("Thread(s) per core", "1"))
@@ -109,6 +114,7 @@ def _detect_windows(total_threads: int) -> CpuTopology:
 
         import json
         data = json.loads(out)
+        _log.debug("Win32_Processor data: %s", data)
         # data may be a single object or a list (one per socket)
         if isinstance(data, dict):
             data = [data]
@@ -219,6 +225,10 @@ def auto_detect_workers(
     # Single socket — simple division
     num_workers = max(1, topology.total_threads // ideal_threads)
     threads_per_worker = topology.total_threads // num_workers
+    _log.info(
+        "Auto-detected workers: %d workers x %d threads, strategy=%s (codec=%s, total_threads=%d)",
+        num_workers, threads_per_worker, "none", codec, topology.total_threads,
+    )
     return WorkerConfig(
         num_workers=num_workers,
         threads_per_worker=threads_per_worker,
@@ -240,6 +250,10 @@ def _plan_multi_socket(ideal_threads: int, topo: CpuTopology) -> WorkerConfig:
         workers_per_node = max(1, tpn // ideal_threads)
         threads_per_worker = tpn // workers_per_node
         num_workers = workers_per_node * topo.numa_nodes
+        _log.info(
+            "Auto-detected workers: %d workers x %d threads, strategy=%s (total_threads=%d)",
+            num_workers, threads_per_worker, "pin_to_node", topo.total_threads,
+        )
         return WorkerConfig(
             num_workers=num_workers,
             threads_per_worker=threads_per_worker,
@@ -250,6 +264,10 @@ def _plan_multi_socket(ideal_threads: int, topo: CpuTopology) -> WorkerConfig:
     # Worker needs more threads than one NUMA node — let OS spread
     num_workers = max(1, topo.total_threads // ideal_threads)
     threads_per_worker = topo.total_threads // max(num_workers, 1)
+    _log.info(
+        "Auto-detected workers: %d workers x %d threads, strategy=%s (total_threads=%d)",
+        num_workers, threads_per_worker, "spread", topo.total_threads,
+    )
     return WorkerConfig(
         num_workers=num_workers,
         threads_per_worker=threads_per_worker,
