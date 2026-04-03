@@ -350,3 +350,35 @@ presets:
       codec: libopus
       bitrate: "128k"
     subtitles: none
+
+  xpeng-test-av1-720p:
+    display_name: "XPENG TEST - WEBM - 720p - AV1 - CRF36"
+    container: webm
+    video:
+      codec: libsvtav1
+      crf: 36
+      preset: 8
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
+
+  xpeng-test-av1-fast-720p:
+    display_name: "XPENG TEST - WEBM - 720p - AV1 Fast - CRF36"
+    container: webm
+    video:
+      codec: libsvtav1
+      crf: 36
+      preset: 10
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
