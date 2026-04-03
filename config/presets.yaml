@@ -304,8 +304,8 @@ presets:
   # Use --test-encode to compare a short segment across codecs
   # ─────────────────────────────────────────────────────────────
   xpeng-test-h264-720p:
-    display_name: "XPENG TEST - MP4 - 720p - H264 - RF23"
-    container: mp4
+    display_name: "XPENG TEST - MKV - 720p - H264 - RF23"
+    container: mkv
     video:
       codec: libx264
       crf: 23
@@ -337,8 +337,8 @@ presets:
     subtitles: none
 
   xpeng-test-vp9-720p:
-    display_name: "XPENG TEST - WEBM - 720p - VP9 - RF36"
-    container: webm
+    display_name: "XPENG TEST - MKV - 720p - VP9 - RF36"
+    container: mkv
     video:
       codec: libvpx-vp9
       crf: 36
@@ -348,13 +348,13 @@ presets:
       pix_fmt: yuv420p
     audio:
       mode: transcode
-      codec: libopus
+      codec: aac
       bitrate: "128k"
     subtitles: none
 
   xpeng-test-av1-720p:
-    display_name: "XPENG TEST - MP4 - 720p - AV1 - CRF36"
-    container: mp4
+    display_name: "XPENG TEST - MKV - 720p - AV1 - CRF36"
+    container: mkv
     video:
       codec: libsvtav1
       crf: 36
@@ -369,8 +369,8 @@ presets:
     subtitles: none
 
   xpeng-test-av1-fast-720p:
-    display_name: "XPENG TEST - MP4 - 720p - AV1 Fast - CRF36"
-    container: mp4
+    display_name: "XPENG TEST - MKV - 720p - AV1 Fast - CRF36"
+    container: mkv
     video:
       codec: libsvtav1
       crf: 36
