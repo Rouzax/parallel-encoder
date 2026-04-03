@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import platform
 import subprocess
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -286,6 +287,7 @@ class ParallelEncoder:
         self.num_workers = worker_config.num_workers
         self.threads_per_worker = worker_config.threads_per_worker
         self.ffmpeg_path = ffmpeg_path if ffmpeg_path is not None else find_ffmpeg()
+        self._cancel_event = threading.Event()
         self._numactl_available: bool | None = None
 
     # ------------------------------------------------------------------
@@ -412,7 +414,7 @@ class ParallelEncoder:
                     results.append(future.result())
 
         except KeyboardInterrupt:
-            # Cancel any pending futures; running ones will finish on their own.
+            self._cancel_event.set()
             for future in futures:
                 future.cancel()
             # Collect results from futures that already completed.
@@ -484,4 +486,4 @@ class ParallelEncoder:
                 return _cb
             per_file_cb = _make_cb()
 
-        return run_encode(command, progress_callback=per_file_cb)
+        return run_encode(command, progress_callback=per_file_cb, cancel_event=self._cancel_event)

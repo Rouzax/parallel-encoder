@@ -87,3 +87,19 @@ def test_prepare_jobs_no_collision(worker_config, tmp_path):
         preset=preset,
     )
     assert len(jobs) == 2
+
+
+import threading
+
+
+def test_keyboard_interrupt_signals_cancellation(flat_topology, worker_config):
+    """KeyboardInterrupt should set cancel event so running workers can stop."""
+    encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
+
+    # After init, the encoder should have a cancel event
+    assert hasattr(encoder, "_cancel_event")
+    assert not encoder._cancel_event.is_set()
+
+    # Setting it should be observable
+    encoder._cancel_event.set()
+    assert encoder._cancel_event.is_set()

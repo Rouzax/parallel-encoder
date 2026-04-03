@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -212,6 +213,7 @@ def _parse_progress_line(line: str) -> dict | None:
 def run_encode(
     command: list[str],
     progress_callback: Callable[[dict], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> EncodingResult:
     """Launch an FFmpeg encode subprocess and monitor its output.
 
@@ -256,6 +258,24 @@ def run_encode(
         _log.debug("FFmpeg command: %s", " ".join(command))
 
         for line in process.stderr:
+            if cancel_event is not None and cancel_event.is_set():
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                cleanup_temp(temp)
+                encoding_time = time.monotonic() - start_time
+                return EncodingResult(
+                    source_path=source,
+                    output_path=output,
+                    success=False,
+                    exit_code=-1,
+                    encoding_time=encoding_time,
+                    error_message="Encoding cancelled.",
+                )
+
             line = line.rstrip("\n\r")
             stderr_lines.append(line)
 
