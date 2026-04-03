@@ -320,8 +320,8 @@ presets:
     subtitles: none
 
   xpeng-test-h265-720p:
-    display_name: "XPENG TEST - MP4 - 720p - H265 - RF25"
-    container: mp4
+    display_name: "XPENG TEST - MKV - 720p - H265 - RF25"
+    container: mkv
     video:
       codec: libx265
       profile: main10
