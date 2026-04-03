@@ -53,7 +53,7 @@ class EncodingProgress:
             info="",
         )
 
-        self._console = Console()
+        self._console = Console(highlight=False)
         self._live = Live(
             self._build_layout(),
             console=self._console,
@@ -198,7 +198,7 @@ def print_summary_table(
             When provided the table includes target codec, bitrate, size
             and a reduction percentage.
     """
-    console = Console()
+    console = Console(highlight=False)
 
     table = Table(
         title="Encoding Summary",

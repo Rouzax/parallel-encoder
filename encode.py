@@ -24,7 +24,7 @@ from encoder.worker_pool import (
 from presets.loader import get_preset_by_name, list_preset_names, load_presets
 from ui.progress import EncodingProgress, print_summary_table
 
-console = Console()
+console = Console(highlight=False)
 
 # Default preset file location: config/presets.yaml next to this script.
 _DEFAULT_PRESET_FILE = Path(__file__).resolve().parent / "config" / "presets.yaml"
