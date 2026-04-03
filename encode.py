@@ -56,6 +56,90 @@ def _select_preset_interactive(presets: dict[str, dict[str, Any]]) -> tuple[str,
         console.print("[red]Invalid selection, try again.[/red]")
 
 
+def _run_vmaf_scoring(
+    ffmpeg_path: str,
+    source_files: list[dict[str, Any]],
+    test_results: list[EncodingResult],
+    test_seconds: int,
+) -> None:
+    """Run VMAF scoring on test encode results."""
+    from encoder.vmaf import check_vmaf_support, run_vmaf, vmaf_quality_label
+    from rich.table import Table
+
+    if not check_vmaf_support(ffmpeg_path):
+        console.print("[red]VMAF not available: your ffmpeg build does not include libvmaf.[/red]")
+        return
+
+    console.print("\n[bold]Running VMAF quality scoring...[/bold]")
+
+    vmaf_table = Table(title="VMAF Quality Scores", show_lines=True)
+    vmaf_table.add_column("Filename")
+    vmaf_table.add_column("VMAF Score", justify="right")
+    vmaf_table.add_column("Quality")
+
+    for result in test_results:
+        if not result.success:
+            vmaf_table.add_row(Path(result.source_path).name, "N/A", "encode failed")
+            continue
+
+        # Find the matching source info
+        src_info = next(
+            (sf for sf in source_files if sf["path"] == result.source_path),
+            None,
+        )
+        if src_info is None:
+            continue
+
+        duration = src_info.get("duration", 0.0)
+        start_seconds = None
+        dur_seconds = None
+        if duration > test_seconds:
+            start_seconds = (duration - test_seconds) / 2
+            dur_seconds = test_seconds
+
+        # Get source and target dimensions
+        src_w = src_info.get("video_width", 1280)
+        src_h = src_info.get("video_height", 720)
+
+        # Probe the encoded file for its actual resolution
+        from encoder.media_info import probe_file
+        try:
+            target_info = probe_file(result.output_path)
+            tgt_w = target_info.get("video_width", src_w)
+            tgt_h = target_info.get("video_height", src_h)
+        except RuntimeError:
+            tgt_w, tgt_h = 1280, 720
+
+        console.print(f"  Scoring [cyan]{Path(result.source_path).name}[/cyan]...")
+
+        scores = run_vmaf(
+            ffmpeg_path=ffmpeg_path,
+            source_path=result.source_path,
+            encoded_path=result.output_path,
+            source_width=src_w,
+            source_height=src_h,
+            target_width=tgt_w,
+            target_height=tgt_h,
+            start_seconds=start_seconds,
+            duration_seconds=dur_seconds,
+        )
+
+        if scores is not None:
+            vmaf_score = scores["vmaf"]
+            label = vmaf_quality_label(vmaf_score)
+            color = "green" if vmaf_score >= 80 else "yellow" if vmaf_score >= 70 else "red"
+            vmaf_table.add_row(
+                Path(result.source_path).name,
+                f"[{color}]{vmaf_score:.1f}[/{color}]",
+                label,
+            )
+        else:
+            vmaf_table.add_row(Path(result.source_path).name, "N/A", "scoring failed")
+
+    console.print()
+    console.print(vmaf_table)
+
+
 def _cleanup_test_outputs(output_paths: list[str]) -> None:
     """Remove only the files that the test encode created."""
     for path_str in output_paths:
@@ -211,6 +295,7 @@ def _run_encoding(
 @click.option("--test-seconds", default=120, type=int, help="Duration of test encode in seconds.")
 @click.option("--copy-all", is_flag=True, help="Copy non-video files to the output folder.")
 @click.option("--dry-run", is_flag=True, help="Print FFmpeg commands without executing.")
+@click.option("--vmaf", is_flag=True, help="Run VMAF quality scoring after test encode (requires --test-only or --test-encode).")
 @click.option("-v", "--verbose", count=True, help="Increase verbosity (-v info, -vv debug).")
 @click.option("--log-file", default=None, type=click.Path(dir_okay=False), help="Write debug log to file.")
 def main(
@@ -224,6 +309,7 @@ def main(
     test_seconds: int,
     copy_all: bool,
     dry_run: bool,
+    vmaf: bool,
     verbose: int,
     log_file: str | None,
 ) -> None:
@@ -353,6 +439,15 @@ def main(
             print_summary_table(source_files, test_results, test_target_files)
 
             if test_only:
+                # Run VMAF scoring if requested
+                if vmaf:
+                    _run_vmaf_scoring(
+                        ffmpeg_path=ffmpeg_path,
+                        source_files=source_files,
+                        test_results=test_results,
+                        test_seconds=test_seconds,
+                    )
+
                 # Keep the test output files and exit
                 successful = sum(1 for r in test_results if r.success)
                 console.print(f"\n[bold green]Test encode done.[/bold green] {successful}/{len(test_results)} file(s) encoded.")

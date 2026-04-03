@@ -444,6 +444,60 @@ presets:
     subtitles: none
 
   # ─────────────────────────────────────────────────────────────
+  # Jellyfin / Xpeng production presets (AV1, WebM, Opus)
+  # ─────────────────────────────────────────────────────────────
+  jf-720p-av1-crf35-opus:
+    display_name: "JF - 720p - AV1 - CRF35 - Opus 128k"
+    container: webm
+    video:
+      codec: libsvtav1
+      crf: 35
+      preset: 8
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+      colorspace: bt709
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
+
+  jf-720p-av1-crf32-opus:
+    display_name: "JF - 720p - AV1 - CRF32 - Opus 128k"
+    container: webm
+    video:
+      codec: libsvtav1
+      crf: 32
+      preset: 8
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+      colorspace: bt709
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
+
+  jf-720p-av1-crf38-opus:
+    display_name: "JF - 720p - AV1 - CRF38 - Opus 128k"
+    container: webm
+    video:
+      codec: libsvtav1
+      crf: 38
+      preset: 8
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+      colorspace: bt709
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
+
+  # ─────────────────────────────────────────────────────────────
   # Jellyfin playability test presets
   # Jellyfin Web direct-plays AV1 in MP4/WebM/MKV
   # Testing VP9 + AV1 across containers, all with BT.709
