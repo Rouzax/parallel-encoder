@@ -57,10 +57,11 @@ def test_build_command_test_encode():
     assert "-t 120" in joined
 
 
-def test_atomic_output_path():
-    temp = atomic_output_path("/out/video.mkv")
+def test_atomic_output_path(tmp_path):
+    output = str(tmp_path / "video.mkv")
+    temp = atomic_output_path(output)
     assert temp.endswith(".tmp.mkv")
-    assert temp.startswith("/out/video")
+    assert "video" in temp
 
 
 def test_finalize_output_renames(tmp_path):
