@@ -447,7 +447,7 @@ presets:
   # Jellyfin / Xpeng production presets (AV1, WebM, Opus)
   # ─────────────────────────────────────────────────────────────
   jf-720p-av1-crf35-opus:
-    display_name: "JF - 720p - AV1 - CRF35 - Opus 128k"
+    display_name: "JF - 720p - AV1 - CRF35 - Audio Passthru"
     container: webm
     video:
       codec: libsvtav1
@@ -458,13 +458,11 @@ presets:
       pix_fmt: yuv420p10le
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
   jf-720p-av1-crf32-opus:
-    display_name: "JF - 720p - AV1 - CRF32 - Opus 128k"
+    display_name: "JF - 720p - AV1 - CRF32 - Audio Passthru"
     container: webm
     video:
       codec: libsvtav1
@@ -475,13 +473,11 @@ presets:
       pix_fmt: yuv420p10le
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
   jf-720p-av1-crf38-opus:
-    display_name: "JF - 720p - AV1 - CRF38 - Opus 128k"
+    display_name: "JF - 720p - AV1 - CRF38 - Audio Passthru"
     container: webm
     video:
       codec: libsvtav1
@@ -492,9 +488,7 @@ presets:
       pix_fmt: yuv420p10le
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
   # ─────────────────────────────────────────────────────────────
