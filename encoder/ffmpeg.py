@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable
 
@@ -57,6 +59,29 @@ def find_ffprobe() -> str:
             "ffprobe not found on PATH. Please install ffprobe or add it to your PATH."
         )
     return path
+
+
+def atomic_output_path(output: str) -> str:
+    """Return a temporary path next to the final output.
+
+    The temp file sits in the same directory so os.replace is atomic
+    (same filesystem).
+    """
+    p = Path(output)
+    return str(p.with_suffix(f".tmp{p.suffix}"))
+
+
+def finalize_output(temp_path: str, final_path: str) -> None:
+    """Atomically move the temp file to its final location."""
+    os.replace(temp_path, final_path)
+
+
+def cleanup_temp(temp_path: str) -> None:
+    """Remove a temp file if it exists (best-effort)."""
+    try:
+        os.unlink(temp_path)
+    except OSError:
+        pass
 
 
 def build_command(
@@ -209,6 +234,11 @@ def run_encode(
     if command:
         output = command[-1]
 
+    # Write to temp file, rename on success
+    temp = atomic_output_path(output)
+    command = list(command)  # copy to avoid mutating caller
+    command[-1] = temp
+
     start_time = time.monotonic()
     stderr_lines: list[str] = []
     process: subprocess.Popen[str] | None = None
@@ -220,9 +250,10 @@ def run_encode(
             stderr=subprocess.PIPE,
             text=True,
         )
-        _log.debug("FFmpeg command: %s", " ".join(command))
 
         assert process.stderr is not None  # for type checkers
+
+        _log.debug("FFmpeg command: %s", " ".join(command))
 
         for line in process.stderr:
             line = line.rstrip("\n\r")
@@ -236,12 +267,14 @@ def run_encode(
         process.wait()
         encoding_time = time.monotonic() - start_time
 
-        _log.debug("FFmpeg completed: exit=%d time=%.1fs source=%s", process.returncode, encoding_time, source)
-
         success = process.returncode == 0
         error_message: str | None = None
-        if not success:
-            # Collect the last few stderr lines as the error message
+
+        if success:
+            finalize_output(temp, output)
+            _log.debug("FFmpeg completed: exit=%d time=%.1fs source=%s", process.returncode, encoding_time, source)
+        else:
+            cleanup_temp(temp)
             error_message = "\n".join(stderr_lines[-20:])
 
         return EncodingResult(
@@ -262,6 +295,7 @@ def run_encode(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+        cleanup_temp(temp)
         return EncodingResult(
             source_path=source,
             output_path=output,
