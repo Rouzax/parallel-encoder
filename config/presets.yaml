@@ -319,6 +319,23 @@ presets:
       bitrate: "128k"
     subtitles: none
 
+  xpeng-test-h265-720p:
+    display_name: "XPENG TEST - MP4 - 720p - H265 - RF25"
+    container: mp4
+    video:
+      codec: libx265
+      profile: main10
+      crf: 25
+      preset: medium
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+    audio:
+      mode: transcode
+      codec: aac
+      bitrate: "128k"
+    subtitles: none
+
   xpeng-test-vp9-720p:
     display_name: "XPENG TEST - WEBM - 720p - VP9 - RF36"
     container: webm
