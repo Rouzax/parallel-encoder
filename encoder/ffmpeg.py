@@ -293,9 +293,11 @@ def run_encode(
         if success:
             finalize_output(temp, output)
             _log.debug("FFmpeg completed: exit=%d time=%.1fs source=%s", process.returncode, encoding_time, source)
+            _log.debug("FFmpeg stderr for %s:\n%s", source, "\n".join(stderr_lines[-50:]))
         else:
             cleanup_temp(temp)
             error_message = "\n".join(stderr_lines[-20:])
+            _log.warning("FFmpeg failed for %s (exit %d):\n%s", source, process.returncode, error_message)
 
         return EncodingResult(
             source_path=source,
