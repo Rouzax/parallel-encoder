@@ -118,6 +118,11 @@ def build_command(
     command.extend(input_args)
     command.extend(["-i", source])
 
+    # For test encodes, strip source metadata so the output container
+    # reports the actual encoded duration, not the original file's duration.
+    if test_encode is not None:
+        command.extend(["-map_metadata", "-1"])
+
     # Preset arguments (copy so we don't mutate the caller's list) ----------
     args = list(preset_args)
 
