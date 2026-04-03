@@ -132,7 +132,9 @@ def probe_folder(
         (
             p
             for p in folder.rglob("*")
-            if p.is_file() and p.suffix.lower().lstrip(".") in ext_lower
+            if p.is_file()
+            and not p.is_symlink()
+            and p.suffix.lower().lstrip(".") in ext_lower
         ),
         key=lambda p: p.stem.lower(),
     )

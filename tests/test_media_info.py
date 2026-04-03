@@ -42,3 +42,40 @@ def test_format_size_gigabytes():
 
 def test_format_size_zero():
     assert format_size(0) == "0 B"
+
+
+import os
+from unittest.mock import patch as mock_patch
+
+
+def test_probe_folder_skips_symlinks(tmp_path):
+    """Symlinks should be filtered out before probing."""
+    from encoder.media_info import probe_folder
+
+    src = tmp_path / "source"
+    src.mkdir()
+
+    # Create a symlink to a file outside the source
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.mkv"
+    secret.write_bytes(b"\x00" * 100)
+
+    link = src / "sneaky.mkv"
+    link.symlink_to(secret)
+
+    # Patch probe_file so we can track what gets called
+    probed_paths = []
+
+    def tracking_probe(path):
+        probed_paths.append(str(path))
+        raise RuntimeError("not a real video")
+
+    with mock_patch("encoder.media_info.probe_file", side_effect=tracking_probe):
+        try:
+            probe_folder(str(src), extensions=("mkv",))
+        except RuntimeError:
+            pass
+
+    assert not any("sneaky" in p for p in probed_paths), \
+        "Symlinked file was passed to probe_file but should have been filtered"

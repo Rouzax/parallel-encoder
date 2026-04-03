@@ -76,7 +76,7 @@ def _copy_non_video_files(
     """
     copied = 0
     for src_file in source_folder.rglob("*"):
-        if not src_file.is_file():
+        if not src_file.is_file() or src_file.is_symlink():
             continue
         if src_file.suffix.lstrip(".").lower() in video_extensions:
             continue
