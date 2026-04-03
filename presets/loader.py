@@ -172,8 +172,8 @@ def preset_to_ffmpeg_args(
         args.extend(["-pix_fmt", video["pix_fmt"]])
 
     # Codec-specific profile params
-    if codec == "libx265" and video.get("profile") == "main10":
-        args.extend(["-x265-params", "profile=main10"])
+    if video.get("profile"):
+        args.extend(["-profile:v", video["profile"]])
 
     # ── Resolution scaling (never upscale) ──────────────────────
     max_w: int | None = video.get("max_width")

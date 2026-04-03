@@ -159,15 +159,17 @@ def build_command(
     return command
 
 
+_X265_MAX_THREADS = 16
+
+
 def _x265_pools_param(threads: int) -> str:
     """Build the x265 ``pools`` parameter.
 
-    The actual NUMA pinning is handled at the OS level by wrapping the
-    FFmpeg process with ``numactl`` (Linux) or CPU affinity (Windows).
-    x265 ``pools`` just controls thread count; x265 auto-detects NUMA
-    topology and distributes threads across available (pinned) cores.
+    x265 has a hard limit on frame-threads (typically 16). Requesting
+    more causes it to refuse to start. We cap the pool size accordingly.
     """
-    return f"pools={threads}"
+    capped = min(threads, _X265_MAX_THREADS)
+    return f"pools={capped}"
 
 
 # ---------------------------------------------------------------------------
