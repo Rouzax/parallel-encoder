@@ -296,8 +296,17 @@ def run_encode(
             _log.debug("FFmpeg stderr for %s:\n%s", source, "\n".join(stderr_lines[-50:]))
         else:
             cleanup_temp(temp)
-            error_message = "\n".join(stderr_lines[-20:])
-            _log.warning("FFmpeg failed for %s (exit %d):\n%s", source, process.returncode, error_message)
+            full_stderr = "\n".join(stderr_lines[-20:])
+            # Extract just the last meaningful line for the short message
+            last_line = ""
+            for ln in reversed(stderr_lines):
+                ln = ln.strip()
+                if ln and not ln.startswith("frame="):
+                    last_line = ln
+                    break
+            error_message = last_line or f"exit code {process.returncode}"
+            _log.warning("FFmpeg failed for %s (exit %d): %s", source, process.returncode, error_message)
+            _log.debug("FFmpeg full stderr for %s:\n%s", source, full_stderr)
 
         return EncodingResult(
             source_path=source,
