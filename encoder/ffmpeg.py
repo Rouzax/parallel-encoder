@@ -339,10 +339,9 @@ def run_encode(
     process: subprocess.Popen[str] | None = None
 
     try:
-        # Pin current thread to NUMA node before Popen so child inherits affinity
-        _is_windows = platform.system() == "Windows"
-        if numa_node is not None and _is_windows:
-            _set_windows_numa_affinity(numa_node)
+        # TODO: Windows NUMA pinning disabled pending investigation.
+        # The SetThreadGroupAffinity approach disrupts stderr pipe reading.
+        # Linux NUMA pinning still works via numactl prefix in _wrap_numa().
 
         process = subprocess.Popen(
             command,
@@ -352,10 +351,6 @@ def run_encode(
             encoding="utf-8",
             errors="replace",
         )
-
-        # Restore worker thread to default affinity
-        if numa_node is not None and _is_windows:
-            _restore_windows_thread_affinity()
 
         assert process.stderr is not None  # for type checkers
 
