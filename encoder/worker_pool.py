@@ -310,7 +310,8 @@ class ParallelEncoder:
         self.threads_per_worker = worker_config.threads_per_worker
         self.ffmpeg_path = ffmpeg_path if ffmpeg_path is not None else find_ffmpeg()
         self._cancel_event = threading.Event()
-        self._numactl_available: bool | None = None
+        import shutil as _shutil
+        self._numactl_available: bool = _shutil.which("numactl") is not None
 
     # ------------------------------------------------------------------
     # Job preparation
@@ -486,10 +487,7 @@ class ParallelEncoder:
         return results
 
     def _has_numactl(self) -> bool:
-        """Check if numactl is available (Linux only), cached."""
-        if self._numactl_available is None:
-            import shutil
-            self._numactl_available = shutil.which("numactl") is not None
+        """Check if numactl is available (Linux only)."""
         return self._numactl_available
 
     def _wrap_numa(self, command: list[str], numa_node: int | None) -> list[str]:
