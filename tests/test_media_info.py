@@ -78,3 +78,33 @@ def test_probe_folder_skips_symlinks(tmp_path):
 
     assert not any("sneaky" in p for p in probed_paths), \
         "Symlinked file was passed to probe_file but should have been filtered"
+
+
+def test_probe_folder_continues_on_single_file_error(tmp_path):
+    """A corrupt file should not prevent other files from being probed."""
+    from encoder.media_info import probe_folder
+    from pathlib import Path
+
+    src = tmp_path / "source"
+    src.mkdir()
+    (src / "bad.mkv").write_bytes(b"\x00" * 100)
+    (src / "good.mkv").write_bytes(b"\x00" * 100)
+
+    call_count = {"n": 0}
+
+    def mock_probe(path):
+        call_count["n"] += 1
+        name = Path(path).name
+        if "bad" in name:
+            raise RuntimeError("corrupt file")
+        return {"path": str(path), "filename": Path(path).stem, "duration": 10.0,
+                "file_size": 100, "video_codec": "h264", "video_width": 1920,
+                "video_height": 1080, "video_bitrate": None, "video_colour_primaries": None,
+                "total_bitrate": None, "audio_streams": [], "cover_art_count": 0, "cover_art": []}
+
+    with mock_patch("encoder.media_info.probe_file", side_effect=mock_probe):
+        results = probe_folder(str(src), extensions=("mkv",))
+
+    assert call_count["n"] == 2, "Both files should have been attempted"
+    assert len(results) == 1, "Only the good file should be in results"
+    assert results[0]["filename"] == "good"

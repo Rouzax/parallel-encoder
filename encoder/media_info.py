@@ -174,7 +174,10 @@ def probe_folder(
 
     results: list[dict] = []
     for f in files:
-        results.append(probe_file(f))
+        try:
+            results.append(probe_file(f))
+        except RuntimeError as exc:
+            _log.warning("Skipping %s: %s", f.name, exc)
     return results
 
 
