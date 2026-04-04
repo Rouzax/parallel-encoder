@@ -433,11 +433,11 @@ def main(
 
     # ── Clean up stale temp files from previous runs ───────────────
     # atomic_output_path() creates files like "video.tmp.mkv"
-    _TEMP_EXTENSIONS = {".mkv", ".mp4", ".webm"}
-    stale_temps = [
-        p for p in Path(output).rglob("*.tmp.*")
-        if p.is_file() and p.suffix.lower() in _TEMP_EXTENSIONS
-    ]
+    # atomic_output_path() produces "name.tmp.ext" — match exactly that pattern
+    _TEMP_EXTENSIONS = (".mkv", ".mp4", ".webm")
+    stale_temps: list[Path] = []
+    for ext in _TEMP_EXTENSIONS:
+        stale_temps.extend(p for p in Path(output).rglob(f"*.tmp{ext}") if p.is_file())
     for tmp in stale_temps:
         log.info("Removing stale temp file: %s", tmp)
         try:
