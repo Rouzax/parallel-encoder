@@ -271,6 +271,12 @@ def _run_encoding(
             task_id = progress.add_file(filename, duration)
             task_ids[key] = task_id
 
+        def on_start(filename: str) -> None:
+            key = unicodedata.normalize("NFC", filename)
+            tid = task_ids.get(key)
+            if tid is not None:
+                progress.start_file(tid)
+
         def on_progress(filename: str, info: dict) -> None:
             key = unicodedata.normalize("NFC", filename)
             tid = task_ids.get(key)
@@ -293,6 +299,7 @@ def _run_encoding(
             jobs,
             progress_callback=on_progress,
             completion_callback=_on_complete,
+            start_callback=on_start,
         )
 
     return results, skipped

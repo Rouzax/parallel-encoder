@@ -418,6 +418,7 @@ class ParallelEncoder:
         jobs: list[EncodingJob],
         progress_callback: Callable[[str, dict], None] | None = None,
         completion_callback: Callable[[EncodingResult], None] | None = None,
+        start_callback: Callable[[str], None] | None = None,
     ) -> list[EncodingResult]:
         """Execute encoding jobs in parallel.
 
@@ -428,6 +429,8 @@ class ParallelEncoder:
                 per-file progress reporting.
             completion_callback: Optional callable invoked with each
                 :class:`EncodingResult` as soon as a file finishes.
+            start_callback: Optional callable invoked with the filename
+                when a worker begins encoding a file.
 
         Returns:
             List of :class:`EncodingResult`, one per job (order may differ
@@ -439,7 +442,7 @@ class ParallelEncoder:
         try:
             with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
                 for job in jobs:
-                    future = executor.submit(self._run_single, job, progress_callback)
+                    future = executor.submit(self._run_single, job, progress_callback, start_callback)
                     futures[future] = job
 
                 for future in as_completed(futures):
@@ -509,6 +512,7 @@ class ParallelEncoder:
         self,
         job: EncodingJob,
         progress_callback: Callable[[str, dict], None] | None,
+        start_callback: Callable[[str], None] | None = None,
     ) -> EncodingResult:
         """Execute a single encoding job (runs inside a worker thread)."""
         try:
@@ -525,6 +529,10 @@ class ParallelEncoder:
             command = self._wrap_numa(command, job.numa_node)
 
             filename = Path(job.source_path).name
+
+            # Signal that this worker has started encoding
+            if start_callback is not None:
+                start_callback(filename)
 
             per_file_cb: Callable[[dict], None] | None = None
             if progress_callback is not None:

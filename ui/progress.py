@@ -6,9 +6,8 @@ import threading
 from pathlib import Path
 from typing import Callable
 
-from rich.console import Console, Group
+from rich.console import Console
 from rich.live import Live
-from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     Progress,
@@ -37,7 +36,6 @@ class EncodingProgress:
         self._total_files = total_files
         self._durations: dict[int, float] = {}
         self._file_progress: dict[int, float] = {}
-        self._active: set[int] = set()
         self._completed_count = 0
 
         self._progress = Progress(
@@ -58,26 +56,10 @@ class EncodingProgress:
 
         self._console = Console(highlight=False)
         self._live = Live(
-            self._build_layout(),
+            self._progress,
             console=self._console,
             refresh_per_second=10,
         )
-
-    # ------------------------------------------------------------------
-    # Layout
-    # ------------------------------------------------------------------
-
-    def _build_layout(self) -> Group:
-        """Build the Rich renderable shown in the Live display."""
-        status_panel = Panel(
-            Text(
-                f"Encoding {self._total_files} file(s) in parallel",
-                style="dim",
-            ),
-            title="Status",
-            border_style="bright_black",
-        )
-        return Group(self._progress, status_panel)
 
     # ------------------------------------------------------------------
     # Task management
@@ -106,8 +88,12 @@ class EncodingProgress:
             self._file_progress[task_id] = 0.0
             current_total = self._progress.tasks[self._overall_task].total or 0
             self._progress.update(self._overall_task, total=current_total + duration)
-            self._live.update(self._build_layout())
             return task_id
+
+    def start_file(self, task_id: TaskID) -> None:
+        """Make a file bar visible when encoding begins."""
+        with self._lock:
+            self._progress.update(task_id, visible=True, info="encoding...")
 
     def update_file(self, task_id: TaskID, progress_info: dict) -> None:
         """Update the progress bar for a specific file.
@@ -123,10 +109,6 @@ class EncodingProgress:
         info_text = f"{fps:.1f} fps | {speed:.2f}x"
 
         with self._lock:
-            # Show file bar on first progress update
-            if task_id not in self._active:
-                self._active.add(task_id)
-                self._progress.update(task_id, visible=True)
             duration = self._durations.get(task_id, 0.0)
             completed = min(time_seconds, duration) if duration else time_seconds
             # Snap to duration when within 0.5% to avoid stale "0:00:01"
@@ -149,7 +131,6 @@ class EncodingProgress:
                 info="[green]done[/green]",
                 visible=False,
             )
-            self._active.discard(task_id)
             self._file_progress[task_id] = duration
             self._completed_count += 1
             self._progress.update(
@@ -168,7 +149,6 @@ class EncodingProgress:
                 info="[red]failed[/red]",
                 visible=False,
             )
-            self._active.discard(task_id)
             self._file_progress[task_id] = duration
             self._completed_count += 1
             self._progress.update(
