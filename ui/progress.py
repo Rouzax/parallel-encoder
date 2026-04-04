@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 from typing import Callable
 
 from rich.console import Console
@@ -239,15 +238,17 @@ def print_summary_table(
     table.add_column("Target Size", justify="right")
     table.add_column("Speed", justify="right")
 
-    # Build look-ups keyed on filename (stem). ---------------------------
-    target_by_name: dict[str, dict] = {}
+    # Build look-ups keyed on full path (primary) and stem (fallback). --
+    target_by_path: dict[str, dict] = {}
+    target_by_stem: dict[str, dict] = {}
     if target_files:
-        target_by_name = {tf["filename"]: tf for tf in target_files}
+        for tf in target_files:
+            target_by_path[tf["path"]] = tf
+            target_by_stem[tf["filename"]] = tf  # fallback for non-unique stems
 
     result_by_source: dict[str, EncodingResult] = {}
     for r in results:
-        name = Path(r.source_path).stem
-        result_by_source[name] = r
+        result_by_source[r.source_path] = r
 
     # One row per source file. -------------------------------------------
     for sf in source_files:
@@ -256,7 +257,7 @@ def print_summary_table(
         source_bitrate: str = format_bitrate(sf.get("video_bitrate") or sf.get("total_bitrate"))
         source_size: str = format_size(sf.get("file_size", 0))
 
-        result = result_by_source.get(filename)
+        result = result_by_source.get(sf["path"])
 
         # Target info (only when target probe data is available). --------
         target_codec: str = "N/A"
@@ -264,7 +265,12 @@ def print_summary_table(
         target_size: str = "N/A"
         reduction_text: Text = Text("N/A")
 
-        tf = target_by_name.get(filename)
+        # Match target by output path derived from result, or fall back to stem
+        tf = None
+        if result is not None:
+            tf = target_by_path.get(result.output_path)
+        if tf is None:
+            tf = target_by_stem.get(filename)
         if tf is not None:
             target_codec = tf.get("video_codec") or "N/A"
             target_bitrate = format_bitrate(tf.get("video_bitrate") or tf.get("total_bitrate"))
