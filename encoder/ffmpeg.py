@@ -222,28 +222,89 @@ def _parse_progress_line(line: str) -> dict | None:
 
 
 def _set_windows_numa_affinity(pid: int, numa_node: int, threads_per_numa: int) -> None:
-    """Pin a Windows process to a specific NUMA node's CPUs via SetProcessAffinityMask."""
+    """Pin a Windows process to a specific NUMA node using Processor Group APIs.
+
+    Windows systems with >64 CPUs use Processor Groups (each ≤64 CPUs).
+    ``GetNumaNodeProcessorMaskEx`` returns the group + mask for a NUMA node,
+    and we iterate the child process's threads to pin them via
+    ``SetThreadGroupAffinity``.
+    """
     import ctypes
+    import ctypes.wintypes
 
     kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-    PROCESS_SET_INFORMATION = 0x0200
-    PROCESS_QUERY_INFORMATION = 0x0400
 
-    handle = kernel32.OpenProcess(
-        PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION, False, pid,
-    )
-    if not handle:
-        _log.warning("Could not open process %d for NUMA pinning", pid)
+    # --- Query the processor group and mask for this NUMA node ---
+    class GROUP_AFFINITY(ctypes.Structure):
+        _fields_ = [
+            ("Mask", ctypes.c_ulonglong),
+            ("Group", ctypes.wintypes.WORD),
+            ("Reserved", ctypes.wintypes.WORD * 3),
+        ]
+
+    affinity = GROUP_AFFINITY()
+    if not kernel32.GetNumaNodeProcessorMaskEx(
+        ctypes.c_ushort(numa_node), ctypes.byref(affinity),
+    ):
+        _log.warning("GetNumaNodeProcessorMaskEx failed for node %d", numa_node)
         return
+
+    _log.debug(
+        "NUMA node %d: processor group=%d, mask=0x%x",
+        numa_node, affinity.Group, affinity.Mask,
+    )
+
+    # --- Enumerate the child process's threads and pin each one ---
+    THREAD_SET_INFORMATION = 0x0020
+    THREAD_QUERY_INFORMATION = 0x0040
+    TH32CS_SNAPTHREAD = 0x00000004
+
+    class THREADENTRY32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", ctypes.wintypes.DWORD),
+            ("cntUsage", ctypes.wintypes.DWORD),
+            ("th32ThreadID", ctypes.wintypes.DWORD),
+            ("th32OwnerProcessID", ctypes.wintypes.DWORD),
+            ("tpBasePri", ctypes.c_long),
+            ("tpDeltaPri", ctypes.c_long),
+            ("dwFlags", ctypes.wintypes.DWORD),
+        ]
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
+    if snapshot == ctypes.wintypes.HANDLE(-1).value:
+        _log.warning("CreateToolhelp32Snapshot failed for PID %d", pid)
+        return
+
+    pinned = 0
     try:
-        mask = ((1 << threads_per_numa) - 1) << (numa_node * threads_per_numa)
-        result = kernel32.SetProcessAffinityMask(handle, ctypes.c_ulonglong(mask))
-        if not result:
-            _log.warning("SetProcessAffinityMask failed for PID %d, node %d", pid, numa_node)
-        else:
-            _log.debug("Pinned PID %d to NUMA node %d (mask=0x%x)", pid, numa_node, mask)
+        te = THREADENTRY32()
+        te.dwSize = ctypes.sizeof(THREADENTRY32)
+        if kernel32.Thread32First(snapshot, ctypes.byref(te)):
+            while True:
+                if te.th32OwnerProcessID == pid:
+                    th = kernel32.OpenThread(
+                        THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION,
+                        False, te.th32ThreadID,
+                    )
+                    if th:
+                        prev = GROUP_AFFINITY()
+                        if kernel32.SetThreadGroupAffinity(
+                            th, ctypes.byref(affinity), ctypes.byref(prev),
+                        ):
+                            pinned += 1
+                        kernel32.CloseHandle(th)
+                if not kernel32.Thread32Next(snapshot, ctypes.byref(te)):
+                    break
     finally:
-        kernel32.CloseHandle(handle)
+        kernel32.CloseHandle(snapshot)
+
+    if pinned > 0:
+        _log.debug(
+            "Pinned %d thread(s) of PID %d to NUMA node %d (group=%d, mask=0x%x)",
+            pinned, pid, numa_node, affinity.Group, affinity.Mask,
+        )
+    else:
+        _log.warning("No threads pinned for PID %d, node %d", pid, numa_node)
 
 
 # ---------------------------------------------------------------------------
