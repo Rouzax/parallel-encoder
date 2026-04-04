@@ -142,8 +142,8 @@ def test_preset_to_ffmpeg_args_default_container_includes_attachments():
     assert "-c:t" in args
 
 
-def test_preset_to_ffmpeg_args_mkv_cover_art_maps_all_video():
-    """MKV with cover art should map all video streams and use per-stream codecs."""
+def test_preset_to_ffmpeg_args_mkv_cover_art_uses_first_video_only():
+    """MKV with cover art should still map only first video (cover art re-attached post-encode)."""
     preset = {
         "container": "mkv",
         "video": {
@@ -159,20 +159,13 @@ def test_preset_to_ffmpeg_args_mkv_cover_art_maps_all_video():
         "cover_art_count": 1,
     }
     args = preset_to_ffmpeg_args(preset, source_info)
-    # Should map all video (not just 0:v:0)
-    assert "0:v" in args
-    assert "0:v:0" not in args
-    # Should use per-stream codec for main video and copy for cover art
-    assert "-c:v:0" in args
-    assert args[args.index("-c:v:0") + 1] == "libx265"
-    assert "-c:v:1" in args
-    assert args[args.index("-c:v:1") + 1] == "copy"
-    # Cover art disposition should be preserved
-    assert "-disposition:v:1" in args
-    assert args[args.index("-disposition:v:1") + 1] == "attached_pic"
-    # Video filters should be scoped to stream 0 only
-    assert "-filter:v:0" in args
-    assert "-vf" not in args
+    # Must use 0:v:0 (not 0:v) — mapping all video breaks FFmpeg progress
+    assert "0:v:0" in args
+    assert "-c:v" in args
+    assert "-c:v:0" not in args
+    # Should use -vf, not -filter:v:0
+    assert "-vf" in args
+    assert "-filter:v:0" not in args
 
 
 def test_preset_to_ffmpeg_args_mkv_no_cover_art_maps_first_video():

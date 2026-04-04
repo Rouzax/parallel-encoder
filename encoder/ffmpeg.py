@@ -389,6 +389,9 @@ def run_encode(
                 progress = _parse_progress_line(line)
                 if progress is not None:
                     progress_callback(progress)
+                elif "frame=" in line and len(stderr_lines) <= 5:
+                    # Log unparsed progress lines for diagnostics
+                    _log.debug("Unparsed progress line: %s", line[:300])
 
         process.wait()
         encoding_time = time.monotonic() - start_time

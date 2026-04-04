@@ -141,13 +141,10 @@ def preset_to_ffmpeg_args(
     container: str = preset.get("container", "mkv").lower()
 
     # ── Stream mapping ──────────────────────────────────────────
-    cover_art_count: int = source_info.get("cover_art_count", 0)
-
-    # Video streams — map all for MKV (to preserve cover art), first-only for WebM/MP4
-    if container in ("mkv", "matroska") and cover_art_count > 0:
-        args.extend(["-map", "0:v"])
-    else:
-        args.extend(["-map", "0:v:0"])
+    # Map first video stream only. Cover art (attached_pic video streams)
+    # cannot be mapped alongside encoded video — FFmpeg outputs time=N/A
+    # which breaks progress reporting. Cover art is re-attached post-encode.
+    args.extend(["-map", "0:v:0"])
 
     # Audio stream mapping
     language: str | None = audio.get("language")
@@ -169,14 +166,7 @@ def preset_to_ffmpeg_args(
 
     # ── Video codec ─────────────────────────────────────────────
     codec: str = video["codec"]
-    # When mapping all video streams (MKV with cover art), target only the main video
-    if container in ("mkv", "matroska") and cover_art_count > 0:
-        args.extend(["-c:v:0", codec])
-        # Copy cover art video streams as-is and preserve attached_pic disposition
-        for i in range(1, cover_art_count + 1):
-            args.extend([f"-c:v:{i}", "copy", f"-disposition:v:{i}", "attached_pic"])
-    else:
-        args.extend(["-c:v", codec])
+    args.extend(["-c:v", codec])
     args.extend(["-crf", str(video["crf"])])
 
     if codec == "libvpx-vp9":
@@ -216,9 +206,7 @@ def preset_to_ffmpeg_args(
 
     if vf_filters:
         # Scope filter to main video only when cover art streams are mapped
-        maps_cover_art = container in ("mkv", "matroska") and cover_art_count > 0
-        vf_flag = "-filter:v:0" if maps_cover_art else "-vf"
-        args.extend([vf_flag, ",".join(vf_filters)])
+        args.extend(["-vf", ",".join(vf_filters)])
 
     # ── Frame rate mode ────────────────────────────────────────
     fps_mode: str | None = video.get("fps_mode")
