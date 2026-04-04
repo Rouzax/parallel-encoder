@@ -167,9 +167,9 @@ def preset_to_ffmpeg_args(
     # When mapping all video streams (MKV with cover art), target only the main video
     if container in ("mkv", "matroska") and cover_art_count > 0:
         args.extend(["-c:v:0", codec])
-        # Copy cover art video streams as-is
+        # Copy cover art video streams as-is and preserve attached_pic disposition
         for i in range(1, cover_art_count + 1):
-            args.extend([f"-c:v:{i}", "copy"])
+            args.extend([f"-c:v:{i}", "copy", f"-disposition:v:{i}", "attached_pic"])
     else:
         args.extend(["-c:v", codec])
     args.extend(["-crf", str(video["crf"])])

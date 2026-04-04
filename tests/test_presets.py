@@ -167,6 +167,9 @@ def test_preset_to_ffmpeg_args_mkv_cover_art_maps_all_video():
     assert args[args.index("-c:v:0") + 1] == "libx265"
     assert "-c:v:1" in args
     assert args[args.index("-c:v:1") + 1] == "copy"
+    # Cover art disposition should be preserved
+    assert "-disposition:v:1" in args
+    assert args[args.index("-disposition:v:1") + 1] == "attached_pic"
     # Video filters should be scoped to stream 0 only
     assert "-filter:v:0" in args
     assert "-vf" not in args
