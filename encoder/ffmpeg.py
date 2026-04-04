@@ -221,20 +221,20 @@ def _parse_progress_line(line: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def _set_windows_numa_affinity(pid: int, numa_node: int, threads_per_numa: int) -> None:
-    """Pin a Windows process to a specific NUMA node using Processor Group APIs.
+def _set_windows_numa_affinity(numa_node: int) -> None:
+    """Pin the current thread to a NUMA node's processor group before Popen.
 
-    Windows systems with >64 CPUs use Processor Groups (each ≤64 CPUs).
-    ``GetNumaNodeProcessorMaskEx`` returns the group + mask for a NUMA node,
-    and we iterate the child process's threads to pin them via
-    ``SetThreadGroupAffinity``.
+    Windows systems with >64 CPUs use Processor Groups. Child processes
+    inherit the creating thread's group affinity. We temporarily pin the
+    current thread to the target NUMA node's group, so the Popen'd FFmpeg
+    process starts in the correct group. Call ``_restore_windows_thread_affinity``
+    after Popen to restore the thread.
     """
     import ctypes
     import ctypes.wintypes
 
     kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
 
-    # --- Query the processor group and mask for this NUMA node ---
     class GROUP_AFFINITY(ctypes.Structure):
         _fields_ = [
             ("Mask", ctypes.c_ulonglong),
@@ -242,69 +242,58 @@ def _set_windows_numa_affinity(pid: int, numa_node: int, threads_per_numa: int) 
             ("Reserved", ctypes.wintypes.WORD * 3),
         ]
 
-    affinity = GROUP_AFFINITY()
+    # Query the processor group and mask for this NUMA node
+    target = GROUP_AFFINITY()
     if not kernel32.GetNumaNodeProcessorMaskEx(
-        ctypes.c_ushort(numa_node), ctypes.byref(affinity),
+        ctypes.c_ushort(numa_node), ctypes.byref(target),
     ):
         _log.warning("GetNumaNodeProcessorMaskEx failed for node %d", numa_node)
         return
 
     _log.debug(
         "NUMA node %d: processor group=%d, mask=0x%x",
-        numa_node, affinity.Group, affinity.Mask,
+        numa_node, target.Group, target.Mask,
     )
 
-    # --- Enumerate the child process's threads and pin each one ---
-    THREAD_SET_INFORMATION = 0x0020
-    THREAD_QUERY_INFORMATION = 0x0040
-    TH32CS_SNAPTHREAD = 0x00000004
-
-    class THREADENTRY32(ctypes.Structure):
-        _fields_ = [
-            ("dwSize", ctypes.wintypes.DWORD),
-            ("cntUsage", ctypes.wintypes.DWORD),
-            ("th32ThreadID", ctypes.wintypes.DWORD),
-            ("th32OwnerProcessID", ctypes.wintypes.DWORD),
-            ("tpBasePri", ctypes.c_long),
-            ("tpDeltaPri", ctypes.c_long),
-            ("dwFlags", ctypes.wintypes.DWORD),
-        ]
-
-    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
-    if snapshot == ctypes.wintypes.HANDLE(-1).value:
-        _log.warning("CreateToolhelp32Snapshot failed for PID %d", pid)
+    # Pin current thread to the target NUMA node's group
+    current_thread = kernel32.GetCurrentThread()
+    previous = GROUP_AFFINITY()
+    if not kernel32.SetThreadGroupAffinity(
+        current_thread, ctypes.byref(target), ctypes.byref(previous),
+    ):
+        _log.warning("SetThreadGroupAffinity failed for NUMA node %d", numa_node)
         return
 
-    pinned = 0
-    try:
-        te = THREADENTRY32()
-        te.dwSize = ctypes.sizeof(THREADENTRY32)
-        if kernel32.Thread32First(snapshot, ctypes.byref(te)):
-            while True:
-                if te.th32OwnerProcessID == pid:
-                    th = kernel32.OpenThread(
-                        THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION,
-                        False, te.th32ThreadID,
-                    )
-                    if th:
-                        prev = GROUP_AFFINITY()
-                        if kernel32.SetThreadGroupAffinity(
-                            th, ctypes.byref(affinity), ctypes.byref(prev),
-                        ):
-                            pinned += 1
-                        kernel32.CloseHandle(th)
-                if not kernel32.Thread32Next(snapshot, ctypes.byref(te)):
-                    break
-    finally:
-        kernel32.CloseHandle(snapshot)
+    _log.debug("Temporarily pinned worker thread to NUMA node %d for process creation", numa_node)
 
-    if pinned > 0:
-        _log.debug(
-            "Pinned %d thread(s) of PID %d to NUMA node %d (group=%d, mask=0x%x)",
-            pinned, pid, numa_node, affinity.Group, affinity.Mask,
-        )
-    else:
-        _log.warning("No threads pinned for PID %d, node %d", pid, numa_node)
+
+def _restore_windows_thread_affinity() -> None:
+    """Restore the current thread to default affinity (all processors)."""
+    import ctypes
+    import ctypes.wintypes
+
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+
+    class GROUP_AFFINITY(ctypes.Structure):
+        _fields_ = [
+            ("Mask", ctypes.c_ulonglong),
+            ("Group", ctypes.wintypes.WORD),
+            ("Reserved", ctypes.wintypes.WORD * 3),
+        ]
+
+    # Get system affinity mask to restore full access
+    process = kernel32.GetCurrentProcess()
+    proc_mask = ctypes.c_ulonglong()
+    sys_mask = ctypes.c_ulonglong()
+    kernel32.GetProcessAffinityMask(process, ctypes.byref(proc_mask), ctypes.byref(sys_mask))
+
+    restore = GROUP_AFFINITY()
+    restore.Mask = sys_mask.value if sys_mask.value else 0xFFFFFFFFFFFFFFFF
+    restore.Group = 0
+
+    current_thread = kernel32.GetCurrentThread()
+    prev = GROUP_AFFINITY()
+    kernel32.SetThreadGroupAffinity(current_thread, ctypes.byref(restore), ctypes.byref(prev))
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +339,11 @@ def run_encode(
     process: subprocess.Popen[str] | None = None
 
     try:
+        # Pin current thread to NUMA node before Popen so child inherits affinity
+        _is_windows = platform.system() == "Windows"
+        if numa_node is not None and _is_windows:
+            _set_windows_numa_affinity(numa_node)
+
         process = subprocess.Popen(
             command,
             stdout=subprocess.DEVNULL,
@@ -359,11 +353,11 @@ def run_encode(
             errors="replace",
         )
 
-        assert process.stderr is not None  # for type checkers
+        # Restore worker thread to default affinity
+        if numa_node is not None and _is_windows:
+            _restore_windows_thread_affinity()
 
-        # Pin to NUMA node on Windows (Linux uses numactl prefix instead)
-        if numa_node is not None and threads_per_numa is not None and platform.system() == "Windows":
-            _set_windows_numa_affinity(process.pid, numa_node, threads_per_numa)
+        assert process.stderr is not None  # for type checkers
 
         _log.debug("FFmpeg command: %s", " ".join(command))
 
