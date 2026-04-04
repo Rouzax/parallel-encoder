@@ -140,3 +140,72 @@ def test_preset_to_ffmpeg_args_default_container_includes_attachments():
     args = preset_to_ffmpeg_args(preset, source_info)
     assert "0:t?" in args
     assert "-c:t" in args
+
+
+def test_preset_to_ffmpeg_args_mkv_cover_art_maps_all_video():
+    """MKV with cover art should map all video streams and use per-stream codecs."""
+    preset = {
+        "container": "mkv",
+        "video": {
+            "codec": "libx265", "crf": 22, "preset": "medium",
+            "max_width": 1280, "max_height": 720,
+        },
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [],
+        "cover_art_count": 1,
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    # Should map all video (not just 0:v:0)
+    assert "0:v" in args
+    assert "0:v:0" not in args
+    # Should use per-stream codec for main video and copy for cover art
+    assert "-c:v:0" in args
+    assert args[args.index("-c:v:0") + 1] == "libx265"
+    assert "-c:v:1" in args
+    assert args[args.index("-c:v:1") + 1] == "copy"
+    # Video filters should be scoped to stream 0 only
+    assert "-filter:v:0" in args
+    assert "-vf" not in args
+
+
+def test_preset_to_ffmpeg_args_mkv_no_cover_art_maps_first_video():
+    """MKV without cover art should map only first video stream."""
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [],
+        "cover_art_count": 0,
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    assert "0:v:0" in args
+    assert "-c:v" in args
+    assert "-c:v:0" not in args
+
+
+def test_preset_to_ffmpeg_args_webm_ignores_cover_art():
+    """WebM can't hold non-VP9/AV1 video — should always map first video only."""
+    preset = {
+        "container": "webm",
+        "video": {"codec": "libvpx-vp9", "crf": 30, "speed": 4},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [],
+        "cover_art_count": 1,
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    # WebM must use 0:v:0, not 0:v
+    assert "0:v:0" in args
+    assert "-c:v" in args
+    assert "-c:v:0" not in args

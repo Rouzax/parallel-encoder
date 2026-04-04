@@ -53,9 +53,21 @@ def probe_file(path: str | Path) -> dict:
     fmt: dict = data.get("format", {})
     streams: list[dict] = data.get("streams", [])
 
-    # --- video stream (first one found) ---
+    # --- video stream (first non-cover-art video) ---
     video: dict | None = next(
-        (s for s in streams if s.get("codec_type") == "video"), None
+        (
+            s for s in streams
+            if s.get("codec_type") == "video"
+            and s.get("disposition", {}).get("attached_pic", 0) != 1
+        ),
+        None,
+    )
+
+    # --- cover art streams (video streams with attached_pic disposition) ---
+    cover_art_count: int = sum(
+        1 for s in streams
+        if s.get("codec_type") == "video"
+        and s.get("disposition", {}).get("attached_pic", 0) == 1
     )
 
     video_codec: str | None = None
@@ -115,6 +127,7 @@ def probe_file(path: str | Path) -> dict:
         "video_colour_primaries": video_colour_primaries,
         "total_bitrate": total_bitrate,
         "audio_streams": audio_streams,
+        "cover_art_count": cover_art_count,
     }
 
 
