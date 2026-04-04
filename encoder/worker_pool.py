@@ -16,7 +16,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from encoder.ffmpeg import EncodingResult, build_command, find_ffmpeg, run_encode
+from encoder.ffmpeg import (
+    EncodingResult, build_command, cover_art_attach_args, extract_cover_art,
+    find_ffmpeg, run_encode,
+)
 from presets.loader import preset_to_ffmpeg_args
 
 _log = logging.getLogger("parallel-encoder")
@@ -286,6 +289,7 @@ class EncodingJob:
     threads: int
     test_encode: dict | None = field(default=None)
     numa_node: int | None = field(default=None)
+    cover_art: list[dict] = field(default_factory=list)
 
 
 class ParallelEncoder:
@@ -386,6 +390,9 @@ class ParallelEncoder:
             if self.config.numa_strategy == "pin_to_node":
                 numa_node = len(jobs) % self.config.topology.numa_nodes
 
+            # Carry cover art info for MKV re-attachment
+            cover_art: list[dict] = source_info.get("cover_art", [])
+
             jobs.append(
                 EncodingJob(
                     source_path=str(source_path),
@@ -394,6 +401,7 @@ class ParallelEncoder:
                     threads=self.threads_per_worker,
                     test_encode=test_encode_dict,
                     numa_node=numa_node,
+                    cover_art=cover_art if container.lower() in ("mkv", "matroska") else [],
                 )
             )
 
@@ -515,12 +523,24 @@ class ParallelEncoder:
         start_callback: Callable[[str], None] | None = None,
     ) -> EncodingResult:
         """Execute a single encoding job (runs inside a worker thread)."""
+        cover_art_temps: list[str] = []
         try:
+            # Extract cover art to temp files and build -attach args
+            attach_args: list[str] = []
+            if job.cover_art:
+                import tempfile
+                temp_dir = tempfile.mkdtemp(prefix="pe_cover_")
+                extracted = extract_cover_art(
+                    self.ffmpeg_path, job.source_path, job.cover_art, temp_dir,
+                )
+                cover_art_temps = [t[0] for t in extracted]
+                attach_args = cover_art_attach_args(extracted)
+
             command = build_command(
                 ffmpeg_path=self.ffmpeg_path,
                 source=job.source_path,
                 output=job.output_path,
-                preset_args=job.preset_args,
+                preset_args=job.preset_args + attach_args,
                 threads=job.threads,
                 test_encode=job.test_encode,
             )
@@ -542,13 +562,14 @@ class ParallelEncoder:
                     return _cb
                 per_file_cb = _make_cb()
 
-            return run_encode(
+            result = run_encode(
                 command,
                 progress_callback=per_file_cb,
                 cancel_event=self._cancel_event,
                 numa_node=job.numa_node,
                 threads_per_numa=self.config.topology.threads_per_numa,
             )
+            return result
         except Exception as exc:
             _log.error("Unexpected error encoding %s: %s", job.source_path, exc, exc_info=True)
             # Clean up temp file that may have been left behind
@@ -562,3 +583,10 @@ class ParallelEncoder:
                 encoding_time=0.0,
                 error_message=f"Internal error: {exc}",
             )
+        finally:
+            # Clean up extracted cover art temp files
+            for tmp in cover_art_temps:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass

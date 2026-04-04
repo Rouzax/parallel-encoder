@@ -86,6 +86,62 @@ def cleanup_temp(temp_path: str) -> None:
         _log.debug("Could not remove temp file %s: %s", temp_path, exc)
 
 
+def extract_cover_art(
+    ffmpeg_path: str,
+    source: str,
+    cover_art: list[dict],
+    temp_dir: str,
+) -> list[tuple[str, str, str]]:
+    """Extract cover art streams from source to temp files.
+
+    Args:
+        ffmpeg_path: Path to ffmpeg binary.
+        source: Source video file path.
+        cover_art: List of dicts with ``index``, ``filename``, ``mimetype``.
+        temp_dir: Directory to write extracted files.
+
+    Returns:
+        List of (temp_file_path, original_filename, mimetype) tuples.
+    """
+    extracted: list[tuple[str, str, str]] = []
+    for i, art in enumerate(cover_art):
+        stream_idx = art["index"]
+        orig_name = art["filename"]
+        mimetype = art["mimetype"]
+        # Use unique temp name to avoid collisions (multiple covers may share names)
+        ext = Path(orig_name).suffix or ".png"
+        temp_path = str(Path(temp_dir) / f"_cover_{i}{ext}")
+        try:
+            result = subprocess.run(
+                [ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
+                 "-i", source, "-map", f"0:{stream_idx}", "-frames:v", "1", temp_path],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0 and Path(temp_path).exists():
+                extracted.append((temp_path, orig_name, mimetype))
+                _log.debug("Extracted cover art: stream %d -> %s (%s)", stream_idx, orig_name, mimetype)
+            else:
+                _log.warning("Failed to extract cover art stream %d: %s", stream_idx, result.stderr.strip())
+        except Exception as exc:
+            _log.warning("Error extracting cover art stream %d: %s", stream_idx, exc)
+    return extracted
+
+
+def cover_art_attach_args(extracted: list[tuple[str, str, str]]) -> list[str]:
+    """Build FFmpeg ``-attach`` arguments for extracted cover art files.
+
+    Args:
+        extracted: List of (temp_file_path, original_filename, mimetype) tuples
+            as returned by :func:`extract_cover_art`.
+    """
+    args: list[str] = []
+    for i, (temp_path, orig_name, mimetype) in enumerate(extracted):
+        args.extend(["-attach", temp_path])
+        args.extend([f"-metadata:s:t:{i}", f"mimetype={mimetype}"])
+        args.extend([f"-metadata:s:t:{i}", f"filename={orig_name}"])
+    return args
+
+
 def build_command(
     ffmpeg_path: str,
     source: str,

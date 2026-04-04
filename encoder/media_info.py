@@ -64,11 +64,19 @@ def probe_file(path: str | Path) -> dict:
     )
 
     # --- cover art streams (video streams with attached_pic disposition) ---
-    cover_art_count: int = sum(
-        1 for s in streams
-        if s.get("codec_type") == "video"
-        and s.get("disposition", {}).get("attached_pic", 0) == 1
-    )
+    cover_art: list[dict] = []
+    for s in streams:
+        if (
+            s.get("codec_type") == "video"
+            and s.get("disposition", {}).get("attached_pic", 0) == 1
+        ):
+            tags = s.get("tags", {})
+            cover_art.append({
+                "index": s.get("index", 0),
+                "filename": tags.get("filename") or tags.get("FILENAME") or "cover.png",
+                "mimetype": tags.get("mimetype") or tags.get("MIMETYPE") or "image/png",
+            })
+    cover_art_count: int = len(cover_art)
 
     video_codec: str | None = None
     video_width: int | None = None
@@ -128,6 +136,7 @@ def probe_file(path: str | Path) -> dict:
         "total_bitrate": total_bitrate,
         "audio_streams": audio_streams,
         "cover_art_count": cover_art_count,
+        "cover_art": cover_art,
     }
 
 
