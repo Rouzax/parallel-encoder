@@ -356,7 +356,14 @@ def run_encode(
 
         _log.debug("FFmpeg command: %s", " ".join(command))
 
-        for line in process.stderr:
+        # Use readline() instead of the file iterator — the iterator
+        # buffers aggressively on Windows and never yields \r-terminated
+        # progress lines from FFmpeg.
+        while True:
+            line = process.stderr.readline()
+            if not line:
+                break
+
             if cancel_event is not None and cancel_event.is_set():
                 process.terminate()
                 try:
@@ -377,10 +384,6 @@ def run_encode(
 
             line = line.rstrip("\n\r")
             stderr_lines.append(line)
-
-            # Log first few stderr lines for diagnostics
-            if len(stderr_lines) <= 3 and line.strip():
-                _log.debug("FFmpeg stderr[%d]: %s", len(stderr_lines), line[:200])
 
             if progress_callback is not None:
                 progress = _parse_progress_line(line)
