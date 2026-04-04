@@ -403,12 +403,8 @@ def run_encode(
                 break
 
             if cancel_event is not None and cancel_event.is_set():
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
+                process.kill()
+                process.wait()
                 cleanup_temp(temp)
                 encoding_time = time.monotonic() - start_time
                 return EncodingResult(
@@ -478,12 +474,9 @@ def run_encode(
     except KeyboardInterrupt:
         encoding_time = time.monotonic() - start_time
         if process is not None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+            # Kill immediately to prevent stderr bleed during shutdown
+            process.kill()
+            process.wait()
         cleanup_temp(temp)
         return EncodingResult(
             source_path=source,
