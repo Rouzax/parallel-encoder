@@ -211,7 +211,8 @@ def preset_to_ffmpeg_args(
 
     if vf_filters:
         # Scope filter to main video only when cover art streams are mapped
-        vf_flag = "-filter:v:0" if cover_art_count > 0 else "-vf"
+        maps_cover_art = container in ("mkv", "matroska") and cover_art_count > 0
+        vf_flag = "-filter:v:0" if maps_cover_art else "-vf"
         args.extend([vf_flag, ",".join(vf_filters)])
 
     # ── Frame rate mode ────────────────────────────────────────

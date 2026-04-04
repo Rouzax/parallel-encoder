@@ -195,10 +195,13 @@ def test_preset_to_ffmpeg_args_mkv_no_cover_art_maps_first_video():
 
 
 def test_preset_to_ffmpeg_args_webm_ignores_cover_art():
-    """WebM can't hold non-VP9/AV1 video — should always map first video only."""
+    """WebM can't hold non-VP9/AV1 video — should always map first video only and use -vf."""
     preset = {
         "container": "webm",
-        "video": {"codec": "libvpx-vp9", "crf": 30, "speed": 4},
+        "video": {
+            "codec": "libvpx-vp9", "crf": 30, "speed": 4,
+            "max_width": 1280, "max_height": 720,
+        },
         "audio": {"mode": "passthrough"},
         "subtitles": "none",
     }
@@ -212,3 +215,6 @@ def test_preset_to_ffmpeg_args_webm_ignores_cover_art():
     assert "0:v:0" in args
     assert "-c:v" in args
     assert "-c:v:0" not in args
+    # WebM must use -vf, not -filter:v:0 (even if source has cover art)
+    assert "-vf" in args
+    assert "-filter:v:0" not in args
