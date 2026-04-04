@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import shutil
 import sys
+import unicodedata
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import click
 from rich.console import Console
@@ -149,23 +150,31 @@ def _cleanup_test_outputs(output_paths: list[str]) -> None:
             pass
 
 
-def _copy_non_video_files(
-    source_folder: Path,
-    output_folder: Path,
+def _copy_sidecars_for_file(
+    source_path: Path,
+    source_root: Path,
+    output_root: Path,
     video_extensions: tuple[str, ...],
 ) -> int:
-    """Copy non-video files from source to output preserving folder structure.
+    """Copy non-video sidecar files from the same directory as *source_path*.
+
+    Only copies files that don't already exist in the output (avoids
+    re-copying when multiple videos share a directory).
 
     Returns the number of files copied.
     """
+    ext_lower: set[str] = {e.lower().lstrip(".") for e in video_extensions}
+    src_dir = source_path.parent
     copied = 0
-    for src_file in source_folder.rglob("*"):
+    for src_file in src_dir.iterdir():
         if not src_file.is_file() or src_file.is_symlink():
             continue
-        if src_file.suffix.lstrip(".").lower() in video_extensions:
+        if src_file.suffix.lstrip(".").lower() in ext_lower:
             continue
-        relative = src_file.relative_to(source_folder)
-        dst_file = output_folder / relative
+        relative = src_file.relative_to(source_root)
+        dst_file = output_root / relative
+        if dst_file.exists():
+            continue
         dst_file.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_file, dst_file)
         copied += 1
@@ -183,8 +192,14 @@ def _run_encoding(
     test_encode: bool = False,
     test_seconds: int = 120,
     dry_run: bool = False,
-) -> list[EncodingResult]:
-    """Core encoding routine shared by test and full encode paths."""
+    overwrite: bool = False,
+    on_file_complete: Callable[[EncodingResult], None] | None = None,
+) -> tuple[list[EncodingResult], list[str]]:
+    """Core encoding routine shared by test and full encode paths.
+
+    Returns:
+        Tuple of (encoding results, list of skipped source paths).
+    """
     encoder = ParallelEncoder(
         worker_config=worker_config,
         ffmpeg_path=ffmpeg_path,
@@ -192,14 +207,21 @@ def _run_encoding(
     num_workers = worker_config.num_workers
     threads_per_worker = worker_config.threads_per_worker
 
-    jobs = encoder.prepare_jobs(
+    jobs, skipped = encoder.prepare_jobs(
         source_files=source_files,
         source_folder=source_folder,
         output_folder=output_folder,
         preset=preset,
         test_encode=test_encode,
         test_seconds=test_seconds,
+        overwrite=overwrite,
     )
+
+    if skipped:
+        console.print(
+            f"[yellow]Skipped {len(skipped)} file(s) (output exists).[/yellow] "
+            f"Use [bold]--overwrite[/bold] to re-encode."
+        )
 
     _log = logging.getLogger("parallel-encoder")
     for job in jobs:
@@ -220,7 +242,10 @@ def _run_encoding(
                 test_encode=job.test_encode,
             )
             console.print(f"[dim]{' '.join(cmd)}[/dim]\n")
-        return []
+        return [], skipped
+
+    if not jobs:
+        return [], skipped
 
     mode = "test encode" if test_encode else "full encode"
     console.print(
@@ -231,9 +256,12 @@ def _run_encoding(
 
     with EncodingProgress(total_files=len(jobs)) as progress:
         # Register files with the progress display.
+        # Normalize filenames (NFC) to avoid mismatches with accented
+        # characters that may be stored in decomposed form (NFD) on disk.
         task_ids: dict[str, Any] = {}
         for job in jobs:
             filename = Path(job.source_path).name
+            key = unicodedata.normalize("NFC", filename)
             duration = next(
                 (sf["duration"] for sf in source_files if sf["path"] == job.source_path),
                 0.0,
@@ -241,23 +269,33 @@ def _run_encoding(
             if test_encode and job.test_encode:
                 duration = job.test_encode["duration_seconds"]
             task_id = progress.add_file(filename, duration)
-            task_ids[filename] = task_id
+            task_ids[key] = task_id
 
         def on_progress(filename: str, info: dict) -> None:
-            tid = task_ids.get(filename)
+            key = unicodedata.normalize("NFC", filename)
+            tid = task_ids.get(key)
             if tid is not None:
                 progress.update_file(tid, info)
 
-        results = encoder.run(jobs, progress_callback=on_progress)
-
-        # Mark completed files.
-        for result in results:
+        def _on_complete(result: EncodingResult) -> None:
             fname = Path(result.source_path).name
-            tid = task_ids.get(fname)
+            key = unicodedata.normalize("NFC", fname)
+            tid = task_ids.get(key)
             if tid is not None:
-                progress.complete_file(tid)
+                if result.success:
+                    progress.complete_file(tid)
+                else:
+                    progress.fail_file(tid)
+            if on_file_complete is not None and result.success:
+                on_file_complete(result)
 
-    return results
+        results = encoder.run(
+            jobs,
+            progress_callback=on_progress,
+            completion_callback=_on_complete,
+        )
+
+    return results, skipped
 
 
 @click.command()
@@ -295,6 +333,7 @@ def _run_encoding(
 @click.option("--test-seconds", default=120, type=int, help="Duration of test encode in seconds.")
 @click.option("--copy-all", is_flag=True, help="Copy non-video files to the output folder.")
 @click.option("--dry-run", is_flag=True, help="Print FFmpeg commands without executing.")
+@click.option("--overwrite", is_flag=True, help="Re-encode files even if output already exists.")
 @click.option("--vmaf", is_flag=True, help="Run VMAF quality scoring after test encode (requires --test-only or --test-encode).")
 @click.option("-v", "--verbose", count=True, help="Increase verbosity (-v info, -vv debug).")
 @click.option("--log-file", default=None, type=click.Path(dir_okay=False), help="Write debug log to file.")
@@ -309,6 +348,7 @@ def main(
     test_seconds: int,
     copy_all: bool,
     dry_run: bool,
+    overwrite: bool,
     vmaf: bool,
     verbose: int,
     log_file: str | None,
@@ -384,6 +424,24 @@ def main(
     # ── Create output directory ─────────────────────────────────────
     Path(output).mkdir(parents=True, exist_ok=True)
 
+    # ── Clean up stale temp files from previous runs ───────────────
+    # atomic_output_path() creates files like "video.tmp.mkv"
+    _TEMP_EXTENSIONS = {".mkv", ".mp4", ".webm"}
+    stale_temps = [
+        p for p in Path(output).rglob("*.tmp.*")
+        if p.is_file() and p.suffix.lower() in _TEMP_EXTENSIONS
+    ]
+    for tmp in stale_temps:
+        log.info("Removing stale temp file: %s", tmp)
+        try:
+            tmp.unlink()
+        except OSError as exc:
+            log.warning("Could not remove stale temp file %s: %s", tmp, exc)
+    if stale_temps:
+        console.print(
+            f"[dim]Removed {len(stale_temps)} stale temp file(s) from previous run.[/dim]"
+        )
+
     # ── Scan source files ───────────────────────────────────────────
     video_extensions = ("mp4", "m4v", "mkv", "avi", "mov", "wmv", "ts", "flv", "webm", "mpeg", "mpg")
     console.print(f"\n[bold]Scanning source folder:[/bold] {source}")
@@ -422,7 +480,7 @@ def main(
     if test_encode and not dry_run:
         while True:
             console.print("\n[bold yellow]Running test encode...[/bold yellow]")
-            test_results = _run_encoding(
+            test_results, _ = _run_encoding(
                 source_files=source_files,
                 source_folder=source,
                 output_folder=output,
@@ -477,7 +535,19 @@ def main(
                 sys.exit(0)
 
     # ── Full encode ─────────────────────────────────────────────────
-    results = _run_encoding(
+    sidecar_cb: Callable[[EncodingResult], None] | None = None
+    if copy_all:
+        source_root = Path(source)
+        output_root = Path(output)
+
+        def _copy_sidecars(result: EncodingResult) -> None:
+            _copy_sidecars_for_file(
+                Path(result.source_path), source_root, output_root, video_extensions,
+            )
+
+        sidecar_cb = _copy_sidecars
+
+    results, skipped_paths = _run_encoding(
         source_files=source_files,
         source_folder=source,
         output_folder=output,
@@ -486,7 +556,18 @@ def main(
         worker_config=worker_cfg,
         ffmpeg_path=ffmpeg_path,
         dry_run=dry_run,
+        overwrite=overwrite,
+        on_file_complete=sidecar_cb,
     )
+
+    # Copy sidecars for skipped files too (their directories may have new sidecars).
+    if copy_all and skipped_paths:
+        source_root = Path(source)
+        output_root = Path(output)
+        for sp in skipped_paths:
+            _copy_sidecars_for_file(
+                Path(sp), source_root, output_root, video_extensions,
+            )
 
     if dry_run:
         sys.exit(0)
@@ -501,14 +582,11 @@ def main(
         for r in failed:
             console.print(f"  [red]-[/red] {Path(r.source_path).name}: {r.error_message or 'unknown error'}")
 
-    # ── Copy non-video files ────────────────────────────────────────
-    if copy_all:
-        log.info("Copying non-video files...")
-        count = _copy_non_video_files(Path(source), Path(output), video_extensions)
-        log.info("Copied %d non-video file(s).", count)
-
     successful = sum(1 for r in results if r.success)
-    console.print(f"\n[bold green]Done![/bold green] {successful}/{len(results)} file(s) encoded successfully.")
+    parts = [f"{successful}/{len(results)} file(s) encoded successfully"]
+    if skipped_paths:
+        parts.append(f"{len(skipped_paths)} skipped")
+    console.print(f"\n[bold green]Done![/bold green] {', '.join(parts)}.")
 
 
 if __name__ == "__main__":

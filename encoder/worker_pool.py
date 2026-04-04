@@ -320,7 +320,8 @@ class ParallelEncoder:
         preset: dict,
         test_encode: bool = False,
         test_seconds: int = 120,
-    ) -> list[EncodingJob]:
+        overwrite: bool = False,
+    ) -> tuple[list[EncodingJob], list[str]]:
         """Build a list of :class:`EncodingJob` from probed source files.
 
         Args:
@@ -332,9 +333,11 @@ class ParallelEncoder:
             test_encode: When *True*, each job encodes only a short segment
                 from the middle of the source video.
             test_seconds: Maximum duration (in seconds) for test encodes.
+            overwrite: When *True*, re-encode even if output file exists.
 
         Returns:
-            List of :class:`EncodingJob` instances ready for :meth:`run`.
+            Tuple of (list of :class:`EncodingJob` ready for :meth:`run`,
+            list of skipped source file paths).
         """
         source_root = Path(source_folder).resolve()
         output_root = Path(output_folder).resolve()
@@ -344,6 +347,7 @@ class ParallelEncoder:
         extension = _CONTAINER_EXTENSION.get(container.lower(), ".mkv")
 
         jobs: list[EncodingJob] = []
+        skipped: list[str] = []
         for source_info in source_files:
             source_path = Path(source_info["path"])
 
@@ -354,6 +358,13 @@ class ParallelEncoder:
                 relative = Path(source_path.name)
 
             output_path = output_root / relative.with_suffix(extension)
+
+            # Skip files whose output already exists (unless overwriting or test-encoding).
+            if not overwrite and not test_encode and output_path.exists():
+                _log.info("Skipping %s (output exists: %s)", source_path.name, output_path)
+                skipped.append(str(source_path))
+                continue
+
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
             preset_args = preset_to_ffmpeg_args(preset, source_info)
@@ -396,7 +407,7 @@ class ParallelEncoder:
                 )
             seen_outputs[job.output_path] = job.source_path
 
-        return jobs
+        return jobs, skipped
 
     # ------------------------------------------------------------------
     # Execution
@@ -406,6 +417,7 @@ class ParallelEncoder:
         self,
         jobs: list[EncodingJob],
         progress_callback: Callable[[str, dict], None] | None = None,
+        completion_callback: Callable[[EncodingResult], None] | None = None,
     ) -> list[EncodingResult]:
         """Execute encoding jobs in parallel.
 
@@ -414,6 +426,8 @@ class ParallelEncoder:
             progress_callback: Optional callable invoked as
                 ``progress_callback(filename, progress_dict)`` for real-time
                 per-file progress reporting.
+            completion_callback: Optional callable invoked with each
+                :class:`EncodingResult` as soon as a file finishes.
 
         Returns:
             List of :class:`EncodingResult`, one per job (order may differ
@@ -429,7 +443,22 @@ class ParallelEncoder:
                     futures[future] = job
 
                 for future in as_completed(futures):
-                    results.append(future.result())
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        job = futures[future]
+                        _log.error("Encoding crashed: %s — %s", job.source_path, exc)
+                        result = EncodingResult(
+                            source_path=job.source_path,
+                            output_path=job.output_path,
+                            success=False,
+                            exit_code=-1,
+                            encoding_time=0.0,
+                            error_message=f"Internal error: {exc}",
+                        )
+                    results.append(result)
+                    if completion_callback is not None:
+                        completion_callback(result)
 
         except KeyboardInterrupt:
             self._cancel_event.set()
@@ -482,26 +511,37 @@ class ParallelEncoder:
         progress_callback: Callable[[str, dict], None] | None,
     ) -> EncodingResult:
         """Execute a single encoding job (runs inside a worker thread)."""
-        command = build_command(
-            ffmpeg_path=self.ffmpeg_path,
-            source=job.source_path,
-            output=job.output_path,
-            preset_args=job.preset_args,
-            threads=job.threads,
-            test_encode=job.test_encode,
-        )
+        try:
+            command = build_command(
+                ffmpeg_path=self.ffmpeg_path,
+                source=job.source_path,
+                output=job.output_path,
+                preset_args=job.preset_args,
+                threads=job.threads,
+                test_encode=job.test_encode,
+            )
 
-        # Pin to NUMA node if assigned
-        command = self._wrap_numa(command, job.numa_node)
+            # Pin to NUMA node if assigned
+            command = self._wrap_numa(command, job.numa_node)
 
-        filename = Path(job.source_path).name
+            filename = Path(job.source_path).name
 
-        per_file_cb: Callable[[dict], None] | None = None
-        if progress_callback is not None:
-            def _make_cb(fn: str = filename) -> Callable[[dict], None]:
-                def _cb(progress: dict) -> None:
-                    progress_callback(fn, progress)
-                return _cb
-            per_file_cb = _make_cb()
+            per_file_cb: Callable[[dict], None] | None = None
+            if progress_callback is not None:
+                def _make_cb(fn: str = filename) -> Callable[[dict], None]:
+                    def _cb(progress: dict) -> None:
+                        progress_callback(fn, progress)
+                    return _cb
+                per_file_cb = _make_cb()
 
-        return run_encode(command, progress_callback=per_file_cb, cancel_event=self._cancel_event)
+            return run_encode(command, progress_callback=per_file_cb, cancel_event=self._cancel_event)
+        except Exception as exc:
+            _log.error("Unexpected error encoding %s: %s", job.source_path, exc, exc_info=True)
+            return EncodingResult(
+                source_path=job.source_path,
+                output_path=job.output_path,
+                success=False,
+                exit_code=-1,
+                encoding_time=0.0,
+                error_message=f"Internal error: {exc}",
+            )

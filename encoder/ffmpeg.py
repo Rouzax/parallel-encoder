@@ -81,8 +81,8 @@ def cleanup_temp(temp_path: str) -> None:
     """Remove a temp file if it exists (best-effort)."""
     try:
         os.unlink(temp_path)
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("Could not remove temp file %s: %s", temp_path, exc)
 
 
 def build_command(

@@ -80,13 +80,149 @@ def test_prepare_jobs_no_collision(worker_config, tmp_path):
 
     encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
 
-    jobs = encoder.prepare_jobs(
+    jobs, skipped = encoder.prepare_jobs(
         source_files=source_files,
         source_folder=source_folder,
         output_folder=output_folder,
         preset=preset,
     )
     assert len(jobs) == 2
+    assert len(skipped) == 0
+
+
+def test_prepare_jobs_skips_existing_output(worker_config, tmp_path):
+    """Files with existing output should be skipped by default."""
+    source_folder = str(tmp_path / "source")
+    output_folder = str(tmp_path / "output")
+    (tmp_path / "source").mkdir()
+    (tmp_path / "output").mkdir()
+
+    # Create an existing output file for movie1
+    (tmp_path / "output" / "movie1.mkv").write_text("existing")
+
+    source_files = [
+        {"path": str(tmp_path / "source" / "movie1.avi"), "filename": "movie1", "duration": 100.0},
+        {"path": str(tmp_path / "source" / "movie2.mkv"), "filename": "movie2", "duration": 200.0},
+    ]
+
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+
+    encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
+
+    jobs, skipped = encoder.prepare_jobs(
+        source_files=source_files,
+        source_folder=source_folder,
+        output_folder=output_folder,
+        preset=preset,
+    )
+    assert len(jobs) == 1
+    assert len(skipped) == 1
+    assert "movie1.avi" in skipped[0]
+
+
+def test_prepare_jobs_overwrite_ignores_existing(worker_config, tmp_path):
+    """With overwrite=True, existing output files should not be skipped."""
+    source_folder = str(tmp_path / "source")
+    output_folder = str(tmp_path / "output")
+    (tmp_path / "source").mkdir()
+    (tmp_path / "output").mkdir()
+
+    (tmp_path / "output" / "movie1.mkv").write_text("existing")
+
+    source_files = [
+        {"path": str(tmp_path / "source" / "movie1.avi"), "filename": "movie1", "duration": 100.0},
+    ]
+
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+
+    encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
+
+    jobs, skipped = encoder.prepare_jobs(
+        source_files=source_files,
+        source_folder=source_folder,
+        output_folder=output_folder,
+        preset=preset,
+        overwrite=True,
+    )
+    assert len(jobs) == 1
+    assert len(skipped) == 0
+
+
+def test_prepare_jobs_test_encode_never_skips(worker_config, tmp_path):
+    """Test encodes should never skip, even if output exists."""
+    source_folder = str(tmp_path / "source")
+    output_folder = str(tmp_path / "output")
+    (tmp_path / "source").mkdir()
+    (tmp_path / "output").mkdir()
+
+    (tmp_path / "output" / "movie1.mkv").write_text("existing")
+
+    source_files = [
+        {"path": str(tmp_path / "source" / "movie1.avi"), "filename": "movie1", "duration": 100.0},
+    ]
+
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+
+    encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
+
+    jobs, skipped = encoder.prepare_jobs(
+        source_files=source_files,
+        source_folder=source_folder,
+        output_folder=output_folder,
+        preset=preset,
+        test_encode=True,
+    )
+    assert len(jobs) == 1
+    assert len(skipped) == 0
+
+
+def test_prepare_jobs_all_skipped(worker_config, tmp_path):
+    """When all files are skipped, jobs should be empty."""
+    source_folder = str(tmp_path / "source")
+    output_folder = str(tmp_path / "output")
+    (tmp_path / "source").mkdir()
+    (tmp_path / "output").mkdir()
+
+    (tmp_path / "output" / "movie1.mkv").write_text("existing")
+    (tmp_path / "output" / "movie2.mkv").write_text("existing")
+
+    source_files = [
+        {"path": str(tmp_path / "source" / "movie1.avi"), "filename": "movie1", "duration": 100.0},
+        {"path": str(tmp_path / "source" / "movie2.mkv"), "filename": "movie2", "duration": 200.0},
+    ]
+
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+
+    encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
+
+    jobs, skipped = encoder.prepare_jobs(
+        source_files=source_files,
+        source_folder=source_folder,
+        output_folder=output_folder,
+        preset=preset,
+    )
+    assert len(jobs) == 0
+    assert len(skipped) == 2
 
 
 import threading

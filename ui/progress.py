@@ -36,6 +36,8 @@ class EncodingProgress:
         self._lock = threading.Lock()
         self._total_files = total_files
         self._durations: dict[int, float] = {}
+        self._file_progress: dict[int, float] = {}
+        self._completed_count = 0
 
         self._progress = Progress(
             SpinnerColumn(),
@@ -48,9 +50,9 @@ class EncodingProgress:
 
         self._overall_task = self._progress.add_task(
             "Overall",
-            total=total_files,
+            total=0,
             filename="Overall",
-            info="",
+            info=f"0/{total_files} files",
         )
 
         self._console = Console(highlight=False)
@@ -99,6 +101,9 @@ class EncodingProgress:
                 info="waiting",
             )
             self._durations[task_id] = duration
+            self._file_progress[task_id] = 0.0
+            current_total = self._progress.tasks[self._overall_task].total or 0
+            self._progress.update(self._overall_task, total=current_total + duration)
             self._live.update(self._build_layout())
             return task_id
 
@@ -117,10 +122,15 @@ class EncodingProgress:
 
         with self._lock:
             duration = self._durations.get(task_id, 0.0)
+            completed = min(time_seconds, duration) if duration else time_seconds
+            # Snap to duration when within 0.5% to avoid stale "0:00:01"
+            if duration and completed >= duration * 0.995:
+                completed = duration
+            self._progress.update(task_id, completed=completed, info=info_text)
+            self._file_progress[task_id] = completed
             self._progress.update(
-                task_id,
-                completed=min(time_seconds, duration) if duration else time_seconds,
-                info=info_text,
+                self._overall_task,
+                completed=sum(self._file_progress.values()),
             )
 
     def complete_file(self, task_id: TaskID) -> None:
@@ -132,7 +142,30 @@ class EncodingProgress:
                 completed=duration,
                 info="[green]done[/green]",
             )
-            self._progress.advance(self._overall_task)
+            self._file_progress[task_id] = duration
+            self._completed_count += 1
+            self._progress.update(
+                self._overall_task,
+                completed=sum(self._file_progress.values()),
+                info=f"{self._completed_count}/{self._total_files} files",
+            )
+
+    def fail_file(self, task_id: TaskID) -> None:
+        """Mark a file task as failed and advance overall progress."""
+        with self._lock:
+            duration = self._durations.get(task_id, 0.0)
+            self._progress.update(
+                task_id,
+                completed=duration,
+                info="[red]failed[/red]",
+            )
+            self._file_progress[task_id] = duration
+            self._completed_count += 1
+            self._progress.update(
+                self._overall_task,
+                completed=sum(self._file_progress.values()),
+                info=f"{self._completed_count}/{self._total_files} files",
+            )
 
     def make_progress_callback(self, task_id: TaskID) -> Callable[[dict], None]:
         """Return a callback suitable for passing to :func:`run_encode`.
