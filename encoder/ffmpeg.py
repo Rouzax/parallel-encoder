@@ -184,7 +184,7 @@ _PROGRESS_RE = re.compile(
     r"frame=\s*(?P<frame>\d+)\s+"
     r"fps=\s*(?P<fps>[\d.]+)\s+"
     r".*?"
-    r"size=\s*(?P<size>\S+)\s+"
+    r"L?size=\s*(?P<size>\S+)\s+"
     r"time=\s*(?P<time>\S+)\s+"
     r"bitrate=\s*(?P<bitrate>\S+)\s+"
     r".*?"
@@ -377,6 +377,10 @@ def run_encode(
 
             line = line.rstrip("\n\r")
             stderr_lines.append(line)
+
+            # Log first few stderr lines for diagnostics
+            if len(stderr_lines) <= 3 and line.strip():
+                _log.debug("FFmpeg stderr[%d]: %s", len(stderr_lines), line[:200])
 
             if progress_callback is not None:
                 progress = _parse_progress_line(line)
