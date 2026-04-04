@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from encoder.ffmpeg import build_command, atomic_output_path, finalize_output, _parse_progress_line, _parse_time
 
 
@@ -83,7 +85,6 @@ def test_finalize_output_renames(tmp_path):
     temp_file.write_text("data")
     final = str(tmp_path / "video.mkv")
     finalize_output(str(temp_file), final)
-    from pathlib import Path
     assert Path(final).exists()
     assert not temp_file.exists()
 
@@ -122,3 +123,55 @@ def test_parse_time_valid():
 
 def test_parse_time_malformed_returns_zero():
     assert _parse_time("invalid") == 0.0
+
+
+# ---------------------------------------------------------------------------
+# run_encode tests
+# ---------------------------------------------------------------------------
+
+from unittest.mock import patch, MagicMock
+from encoder.ffmpeg import run_encode
+
+
+def test_run_encode_success(tmp_path):
+    """Successful encode should finalize output and return success."""
+    output = str(tmp_path / "video.mkv")
+    temp = str(tmp_path / "video.tmp.mkv")
+
+    mock_process = MagicMock()
+    mock_process.returncode = 0
+    mock_process.stderr.readline.side_effect = [
+        "frame=  100 fps= 25.0 q=28.0 Lsize=    5000kB time=00:00:04.00 bitrate=1234.5kbits/s speed=1.50x\n",
+        "",  # EOF
+    ]
+
+    with patch("encoder.ffmpeg.subprocess.Popen", return_value=mock_process):
+        # Create the temp file that would be produced by ffmpeg
+        Path(temp).write_text("encoded data")
+        result = run_encode(["/usr/bin/ffmpeg", "-i", "in.mkv", output])
+
+    assert result.success
+    assert result.exit_code == 0
+    assert Path(output).exists()
+
+
+def test_run_encode_failure_cleans_up_temp(tmp_path):
+    """Failed encode should clean up temp file and return failure."""
+    output = str(tmp_path / "video.mkv")
+    temp = str(tmp_path / "video.tmp.mkv")
+
+    mock_process = MagicMock()
+    mock_process.returncode = 1
+    mock_process.stderr.readline.side_effect = [
+        "Error: something went wrong\n",
+        "",
+    ]
+
+    with patch("encoder.ffmpeg.subprocess.Popen", return_value=mock_process):
+        Path(temp).write_text("partial data")
+        result = run_encode(["/usr/bin/ffmpeg", "-i", "in.mkv", output])
+
+    assert not result.success
+    assert result.exit_code == 1
+    assert not Path(temp).exists(), "Temp file should have been cleaned up"
+    assert not Path(output).exists(), "Output should not exist on failure"
