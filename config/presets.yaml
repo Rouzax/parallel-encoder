@@ -184,7 +184,7 @@ presets:
   # AV1 (SVT-AV1) — 720p BT.709 presets (MKV container, all audio)
   # ─────────────────────────────────────────────────────────────
   mkv-720p-av1-bt709-crf32-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - CRF32 - All Audio Passthru"
+    display_name: "MKV - 720p - AV1 - BT.709 - P8 CRF32 - All Audio Passthru"
     container: mkv
     video:
       codec: libsvtav1
@@ -199,7 +199,7 @@ presets:
     subtitles: first
 
   mkv-720p-av1-bt709-crf35-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - CRF35 - All Audio Passthru"
+    display_name: "MKV - 720p - AV1 - BT.709 - P8 CRF35 - All Audio Passthru"
     container: mkv
     video:
       codec: libsvtav1
@@ -214,7 +214,7 @@ presets:
     subtitles: first
 
   mkv-720p-av1-bt709-crf38-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - CRF38 - All Audio Passthru"
+    display_name: "MKV - 720p - AV1 - BT.709 - P8 CRF38 - All Audio Passthru"
     container: mkv
     video:
       codec: libsvtav1
