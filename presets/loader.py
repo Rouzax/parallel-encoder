@@ -133,6 +133,7 @@ def preset_to_ffmpeg_args(
     video: dict[str, Any] = preset["video"]
     audio: dict[str, Any] = preset["audio"]
     subtitles: str = preset.get("subtitles", "none")
+    container: str = preset.get("container", "mkv").lower()
 
     # ── Stream mapping ──────────────────────────────────────────
     # Video stream — always first video
@@ -151,6 +152,10 @@ def preset_to_ffmpeg_args(
     elif subtitles == "first":
         args.extend(["-map", "0:s:0?"])
     # "none" — no subtitle mapping
+
+    # Attachment streams (cover art, fonts) — Matroska-based containers only
+    if container in ("mkv", "matroska", "webm"):
+        args.extend(["-map", "0:t?"])
 
     # ── Video codec ─────────────────────────────────────────────
     codec: str = video["codec"]
@@ -211,5 +216,9 @@ def preset_to_ffmpeg_args(
     # ── Subtitles codec ─────────────────────────────────────────
     if subtitles in ("all", "first"):
         args.extend(["-c:s", "copy"])
+
+    # ── Attachments codec ──────────────────────────────────────
+    if container in ("mkv", "matroska", "webm"):
+        args.extend(["-c:t", "copy"])
 
     return args
