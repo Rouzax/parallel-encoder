@@ -303,3 +303,56 @@ def test_keyboard_interrupt_signals_cancellation(flat_topology, worker_config):
     # Setting it should be observable
     encoder._cancel_event.set()
     assert encoder._cancel_event.is_set()
+
+
+# ---------------------------------------------------------------------------
+# auto_detect_workers tests
+# ---------------------------------------------------------------------------
+
+from encoder.worker_pool import auto_detect_workers
+
+
+def test_auto_detect_workers_single_socket_x265():
+    """Single socket with 32 threads, x265 (ideal=16) should give 2 workers."""
+    topo = CpuTopology(
+        total_threads=32, sockets=1, cores_per_socket=16,
+        threads_per_core=2, numa_nodes=1, threads_per_numa=32,
+    )
+    cfg = auto_detect_workers("libx265", topology=topo)
+    assert cfg.num_workers == 2
+    assert cfg.threads_per_worker == 16
+    assert cfg.numa_strategy == "none"
+
+
+def test_auto_detect_workers_multi_socket_pin():
+    """Dual socket with 40 threads per node, SVT-AV1 (ideal=20) should pin 2 per node."""
+    topo = CpuTopology(
+        total_threads=80, sockets=2, cores_per_socket=20,
+        threads_per_core=2, numa_nodes=2, threads_per_numa=40,
+    )
+    cfg = auto_detect_workers("libsvtav1", topology=topo)
+    assert cfg.numa_strategy == "pin_to_node"
+    assert cfg.num_workers == 4  # 2 per node (40 / 20 = 2 per node)
+    assert cfg.threads_per_worker == 20
+
+
+def test_auto_detect_workers_multi_socket_spread():
+    """When ideal threads exceed one NUMA node, strategy should be spread."""
+    topo = CpuTopology(
+        total_threads=16, sockets=2, cores_per_socket=4,
+        threads_per_core=2, numa_nodes=2, threads_per_numa=8,
+    )
+    # SVT-AV1 ideal=20 but each node only has 8 — must spread
+    cfg = auto_detect_workers("libsvtav1", topology=topo)
+    assert cfg.numa_strategy == "spread"
+
+
+def test_auto_detect_workers_unknown_codec_uses_default():
+    """Unknown codec should use _DEFAULT_THREADS_PER_WORKER (12)."""
+    topo = CpuTopology(
+        total_threads=24, sockets=1, cores_per_socket=12,
+        threads_per_core=2, numa_nodes=1, threads_per_numa=24,
+    )
+    cfg = auto_detect_workers("libfoobar", topology=topo)
+    assert cfg.num_workers == 2  # 24 / 12 = 2
+    assert cfg.threads_per_worker == 12
