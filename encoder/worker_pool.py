@@ -569,7 +569,7 @@ class ParallelEncoder:
                 threads_per_numa=self.config.topology.threads_per_numa,
             )
             return result
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
             _log.error("Unexpected error encoding %s: %s", job.source_path, exc, exc_info=True)
             # Clean up temp file that may have been left behind
             from encoder.ffmpeg import atomic_output_path, cleanup_temp
