@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -216,6 +217,36 @@ def _parse_progress_line(line: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# Windows NUMA affinity
+# ---------------------------------------------------------------------------
+
+
+def _set_windows_numa_affinity(pid: int, numa_node: int, threads_per_numa: int) -> None:
+    """Pin a Windows process to a specific NUMA node's CPUs via SetProcessAffinityMask."""
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    PROCESS_SET_INFORMATION = 0x0200
+    PROCESS_QUERY_INFORMATION = 0x0400
+
+    handle = kernel32.OpenProcess(
+        PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION, False, pid,
+    )
+    if not handle:
+        _log.warning("Could not open process %d for NUMA pinning", pid)
+        return
+    try:
+        mask = ((1 << threads_per_numa) - 1) << (numa_node * threads_per_numa)
+        result = kernel32.SetProcessAffinityMask(handle, ctypes.c_ulonglong(mask))
+        if not result:
+            _log.warning("SetProcessAffinityMask failed for PID %d, node %d", pid, numa_node)
+        else:
+            _log.debug("Pinned PID %d to NUMA node %d (mask=0x%x)", pid, numa_node, mask)
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+# ---------------------------------------------------------------------------
 # Encoding runner
 # ---------------------------------------------------------------------------
 
@@ -224,6 +255,8 @@ def run_encode(
     command: list[str],
     progress_callback: Callable[[dict], None] | None = None,
     cancel_event: threading.Event | None = None,
+    numa_node: int | None = None,
+    threads_per_numa: int | None = None,
 ) -> EncodingResult:
     """Launch an FFmpeg encode subprocess and monitor its output.
 
@@ -266,6 +299,10 @@ def run_encode(
         )
 
         assert process.stderr is not None  # for type checkers
+
+        # Pin to NUMA node on Windows (Linux uses numactl prefix instead)
+        if numa_node is not None and threads_per_numa is not None and platform.system() == "Windows":
+            _set_windows_numa_affinity(process.pid, numa_node, threads_per_numa)
 
         _log.debug("FFmpeg command: %s", " ".join(command))
 

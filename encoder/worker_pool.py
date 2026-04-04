@@ -542,7 +542,13 @@ class ParallelEncoder:
                     return _cb
                 per_file_cb = _make_cb()
 
-            return run_encode(command, progress_callback=per_file_cb, cancel_event=self._cancel_event)
+            return run_encode(
+                command,
+                progress_callback=per_file_cb,
+                cancel_event=self._cancel_event,
+                numa_node=job.numa_node,
+                threads_per_numa=self.config.topology.threads_per_numa,
+            )
         except Exception as exc:
             _log.error("Unexpected error encoding %s: %s", job.source_path, exc, exc_info=True)
             # Clean up temp file that may have been left behind
