@@ -5,8 +5,13 @@ Loads YAML preset definitions and converts them into FFmpeg CLI argument lists.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("parallel-encoder")
+
+_WEBM_AUDIO_CODECS = {"opus", "vorbis"}
 
 import yaml
 
@@ -222,7 +227,15 @@ def preset_to_ffmpeg_args(
 
     # ── Audio codec ─────────────────────────────────────────────
     if audio["mode"] == "passthrough":
-        args.extend(["-c:a", "copy"])
+        # WebM only supports Opus/Vorbis — auto-transcode if source audio is incompatible
+        source_audio_codecs = {
+            s.get("codec", "").lower() for s in source_info.get("audio_streams", [])
+        }
+        if container == "webm" and source_audio_codecs and not source_audio_codecs.issubset(_WEBM_AUDIO_CODECS):
+            _log.info("Auto-transcoding audio to Opus (source has %s, WebM requires Opus/Vorbis)", source_audio_codecs)
+            args.extend(["-c:a", "libopus", "-b:a", "160k"])
+        else:
+            args.extend(["-c:a", "copy"])
     else:
         args.extend(["-c:a", audio["codec"]])
         if "bitrate" in audio:

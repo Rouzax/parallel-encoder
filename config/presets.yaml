@@ -181,6 +181,54 @@ presets:
     subtitles: first
 
   # ─────────────────────────────────────────────────────────────
+  # AV1 (SVT-AV1) — 720p BT.709 presets (MKV container, all audio)
+  # ─────────────────────────────────────────────────────────────
+  mkv-720p-av1-bt709-crf32-all-audio:
+    display_name: "MKV - 720p - AV1 - BT.709 - CRF32 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 32
+      preset: 8
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+      colorspace: bt709
+    audio:
+      mode: passthrough
+    subtitles: first
+
+  mkv-720p-av1-bt709-crf35-all-audio:
+    display_name: "MKV - 720p - AV1 - BT.709 - CRF35 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 35
+      preset: 8
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+      colorspace: bt709
+    audio:
+      mode: passthrough
+    subtitles: first
+
+  mkv-720p-av1-bt709-crf38-all-audio:
+    display_name: "MKV - 720p - AV1 - BT.709 - CRF38 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 38
+      preset: 8
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p10le
+      colorspace: bt709
+    audio:
+      mode: passthrough
+    subtitles: first
+
+  # ─────────────────────────────────────────────────────────────
   # H.265 10-bit — 5K presets (MP4 container)
   # ─────────────────────────────────────────────────────────────
   mp4-5k-h265-10bit-slow-rf20-all-audio:

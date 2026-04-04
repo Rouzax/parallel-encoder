@@ -194,6 +194,59 @@ def test_preset_to_ffmpeg_args_mkv_no_cover_art_maps_first_video():
     assert "-c:v:0" not in args
 
 
+def test_preset_to_ffmpeg_args_webm_auto_transcodes_aac_to_opus():
+    """WebM with AAC source audio should auto-transcode to Opus."""
+    preset = {
+        "container": "webm",
+        "video": {"codec": "libvpx-vp9", "crf": 30, "speed": 4},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [{"codec": "aac", "language": "eng", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    assert "-c:a" in args
+    assert args[args.index("-c:a") + 1] == "libopus"
+    assert "-b:a" in args
+    assert args[args.index("-b:a") + 1] == "160k"
+
+
+def test_preset_to_ffmpeg_args_webm_passthrough_opus():
+    """WebM with Opus source audio should passthrough."""
+    preset = {
+        "container": "webm",
+        "video": {"codec": "libvpx-vp9", "crf": 30, "speed": 4},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [{"codec": "opus", "language": "eng", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    assert "-c:a" in args
+    assert args[args.index("-c:a") + 1] == "copy"
+
+
+def test_preset_to_ffmpeg_args_mkv_passthrough_aac():
+    """MKV with AAC source audio should passthrough (MKV supports AAC)."""
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [{"codec": "aac", "language": "eng", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    assert "-c:a" in args
+    assert args[args.index("-c:a") + 1] == "copy"
+
+
 def test_preset_to_ffmpeg_args_webm_ignores_cover_art():
     """WebM can't hold non-VP9/AV1 video — should always map first video only and use -vf."""
     preset = {
