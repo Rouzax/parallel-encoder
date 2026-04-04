@@ -261,6 +261,8 @@ def run_encode(
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
         assert process.stderr is not None  # for type checkers

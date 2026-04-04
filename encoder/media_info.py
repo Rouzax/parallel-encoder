@@ -143,6 +143,7 @@ def probe_folder(
             if p.is_file()
             and not p.is_symlink()
             and p.suffix.lower().lstrip(".") in ext_lower
+            and ".tmp." not in p.name
         ),
         key=lambda p: p.stem.lower(),
     )

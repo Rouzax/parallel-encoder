@@ -537,6 +537,9 @@ class ParallelEncoder:
             return run_encode(command, progress_callback=per_file_cb, cancel_event=self._cancel_event)
         except Exception as exc:
             _log.error("Unexpected error encoding %s: %s", job.source_path, exc, exc_info=True)
+            # Clean up temp file that may have been left behind
+            from encoder.ffmpeg import atomic_output_path, cleanup_temp
+            cleanup_temp(atomic_output_path(job.output_path))
             return EncodingResult(
                 source_path=job.source_path,
                 output_path=job.output_path,

@@ -37,6 +37,7 @@ class EncodingProgress:
         self._total_files = total_files
         self._durations: dict[int, float] = {}
         self._file_progress: dict[int, float] = {}
+        self._active: set[int] = set()
         self._completed_count = 0
 
         self._progress = Progress(
@@ -99,6 +100,7 @@ class EncodingProgress:
                 total=duration,
                 filename=filename,
                 info="waiting",
+                visible=False,
             )
             self._durations[task_id] = duration
             self._file_progress[task_id] = 0.0
@@ -121,6 +123,10 @@ class EncodingProgress:
         info_text = f"{fps:.1f} fps | {speed:.2f}x"
 
         with self._lock:
+            # Show file bar on first progress update
+            if task_id not in self._active:
+                self._active.add(task_id)
+                self._progress.update(task_id, visible=True)
             duration = self._durations.get(task_id, 0.0)
             completed = min(time_seconds, duration) if duration else time_seconds
             # Snap to duration when within 0.5% to avoid stale "0:00:01"
@@ -141,7 +147,9 @@ class EncodingProgress:
                 task_id,
                 completed=duration,
                 info="[green]done[/green]",
+                visible=False,
             )
+            self._active.discard(task_id)
             self._file_progress[task_id] = duration
             self._completed_count += 1
             self._progress.update(
@@ -158,7 +166,9 @@ class EncodingProgress:
                 task_id,
                 completed=duration,
                 info="[red]failed[/red]",
+                visible=False,
             )
+            self._active.discard(task_id)
             self._file_progress[task_id] = duration
             self._completed_count += 1
             self._progress.update(
