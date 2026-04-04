@@ -188,6 +188,8 @@ def build_command(
         effective_threads = min(threads, _X265_MAX_THREADS)
     thread_args: list[str] = ["-threads", str(effective_threads)]
 
+    uses_internal_threading = False
+
     if "libx265" in args:
         pools_param = _x265_pools_param(threads)
         try:
@@ -206,13 +208,15 @@ def build_command(
 
     elif "libx264" in args:
         args.extend(["-x264-params", f"threads={threads}"])
+        uses_internal_threading = True
 
     elif "libvpx-vp9" in args:
         args.extend(["-tile-columns", "2", "-tile-rows", "1"])
         # -threads is already added via thread_args
 
     command.extend(args)
-    command.extend(thread_args)
+    if not uses_internal_threading:
+        command.extend(thread_args)
     command.append(output)
 
     return command

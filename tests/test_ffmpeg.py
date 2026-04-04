@@ -57,6 +57,20 @@ def test_build_command_test_encode():
     assert "-t 120" in joined
 
 
+def test_build_command_x264_no_duplicate_threads():
+    """x264 should not get both -x264-params threads=N and -threads N."""
+    cmd = build_command(
+        ffmpeg_path="ffmpeg",
+        source="in.mkv",
+        output="out.mkv",
+        preset_args=["-c:v", "libx264", "-crf", "22"],
+        threads=8,
+    )
+    joined = " ".join(cmd)
+    assert "threads=8" in joined
+    assert joined.count("-threads") == 0, "x264 should use -x264-params threads=N only, not -threads"
+
+
 def test_atomic_output_path(tmp_path):
     output = str(tmp_path / "video.mkv")
     temp = atomic_output_path(output)
