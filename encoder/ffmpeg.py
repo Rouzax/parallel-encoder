@@ -257,6 +257,7 @@ def _parse_time(time_str: str) -> float:
     if len(parts) == 3:
         hours, minutes, seconds = parts
         return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    _log.debug("Unexpected time format from FFmpeg: %s", time_str)
     return 0.0
 
 
@@ -268,7 +269,7 @@ def _parse_progress_line(line: str) -> dict | None:
     return {
         "frame": int(match.group("frame")),
         "fps": float(match.group("fps")),
-        "time_seconds": _parse_time(match.group("time")),
+        "time_seconds": max(0.0, _parse_time(match.group("time"))),
         "speed": float(match.group("speed")),
         "bitrate": match.group("bitrate"),
         "size": match.group("size"),
