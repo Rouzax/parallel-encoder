@@ -239,6 +239,8 @@ def _x265_pools_param(threads: int) -> str:
 # Progress parsing
 # ---------------------------------------------------------------------------
 
+_STALL_WARNING_SECONDS = 300  # 5 minutes without progress -> log warning
+
 _PROGRESS_RE = re.compile(
     r"frame=\s*(?P<frame>\d+)\s+"
     r"fps=\s*(?P<fps>[\d.]+)\s+"
@@ -419,6 +421,9 @@ def run_encode(
         # Use readline() instead of the file iterator — the iterator
         # buffers aggressively on Windows and never yields \r-terminated
         # progress lines from FFmpeg.
+        last_progress_time = time.monotonic()
+        stall_warned = False
+
         while True:
             line = process.stderr.readline()
             if not line:
@@ -448,10 +453,21 @@ def run_encode(
             if progress_callback is not None:
                 progress = _parse_progress_line(line)
                 if progress is not None:
+                    last_progress_time = time.monotonic()
+                    stall_warned = False
                     progress_callback(progress)
                 elif "frame=" in line and len(stderr_lines) <= 5:
                     # Log unparsed progress lines for diagnostics
                     _log.debug("Unparsed progress line: %s", line[:300])
+
+            # Warn on stall (but don't kill — scene may be legitimately slow)
+            elapsed_since_progress = time.monotonic() - last_progress_time
+            if elapsed_since_progress > _STALL_WARNING_SECONDS and not stall_warned:
+                _log.warning(
+                    "FFmpeg has not reported progress for %.0fs: %s",
+                    elapsed_since_progress, source,
+                )
+                stall_warned = True
 
         process.wait()
         encoding_time = time.monotonic() - start_time
