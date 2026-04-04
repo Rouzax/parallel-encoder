@@ -523,17 +523,16 @@ class ParallelEncoder:
         start_callback: Callable[[str], None] | None = None,
     ) -> EncodingResult:
         """Execute a single encoding job (runs inside a worker thread)."""
-        cover_art_temps: list[str] = []
+        cover_art_temp_dir: str | None = None
         try:
             # Extract cover art to temp files and build -attach args
             attach_args: list[str] = []
             if job.cover_art:
                 import tempfile
-                temp_dir = tempfile.mkdtemp(prefix="pe_cover_")
+                cover_art_temp_dir = tempfile.mkdtemp(prefix="pe_cover_")
                 extracted = extract_cover_art(
-                    self.ffmpeg_path, job.source_path, job.cover_art, temp_dir,
+                    self.ffmpeg_path, job.source_path, job.cover_art, cover_art_temp_dir,
                 )
-                cover_art_temps = [t[0] for t in extracted]
                 attach_args = cover_art_attach_args(extracted)
 
             command = build_command(
@@ -584,9 +583,7 @@ class ParallelEncoder:
                 error_message=f"Internal error: {exc}",
             )
         finally:
-            # Clean up extracted cover art temp files
-            for tmp in cover_art_temps:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
+            # Clean up the entire cover art temp directory
+            if cover_art_temp_dir is not None:
+                import shutil
+                shutil.rmtree(cover_art_temp_dir, ignore_errors=True)

@@ -225,7 +225,71 @@ def test_prepare_jobs_all_skipped(worker_config, tmp_path):
     assert len(skipped) == 2
 
 
-import threading
+import tempfile
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+from encoder.ffmpeg import EncodingResult
+
+
+def test_cover_art_temp_dir_cleaned_up(worker_config, tmp_path):
+    """Temp directory created for cover art extraction must be removed after encode."""
+    source = str(tmp_path / "source" / "movie.mkv")
+    output = str(tmp_path / "output" / "movie.mkv")
+    (tmp_path / "source").mkdir()
+    (tmp_path / "output").mkdir()
+
+    # We'll capture the temp_dir path that mkdtemp creates so we can check it later
+    created_temp_dirs: list[str] = []
+    original_mkdtemp = tempfile.mkdtemp
+
+    def tracking_mkdtemp(**kwargs):
+        d = original_mkdtemp(**kwargs)
+        created_temp_dirs.append(d)
+        # Put a dummy file inside to simulate extracted cover art
+        dummy = Path(d) / "cover.jpg"
+        dummy.write_bytes(b"\xff\xd8dummy")
+        return d
+
+    cover_art = [{"stream_index": 3, "codec_name": "mjpeg"}]
+
+    job = MagicMock()
+    job.source_path = source
+    job.output_path = output
+    job.preset_args = ["-c:v", "libx265"]
+    job.threads = 4
+    job.test_encode = None
+    job.numa_node = None
+    job.cover_art = cover_art
+
+    fake_result = EncodingResult(
+        source_path=source,
+        output_path=output,
+        success=True,
+        exit_code=0,
+        encoding_time=1.0,
+        error_message="",
+    )
+
+    encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
+
+    with (
+        patch("tempfile.mkdtemp", side_effect=tracking_mkdtemp),
+        patch("encoder.worker_pool.extract_cover_art", return_value=[
+            (str(Path(tmp_path) / "dummy_cover.jpg"), "image/jpeg"),
+        ]),
+        patch("encoder.worker_pool.cover_art_attach_args", return_value=[]),
+        patch("encoder.worker_pool.build_command", return_value=["ffmpeg", "-i", source, output]),
+        patch("encoder.worker_pool.run_encode", return_value=fake_result),
+    ):
+        result = encoder._run_single(job, progress_callback=None)
+
+    assert result.success
+    assert len(created_temp_dirs) == 1
+    # The temp directory should have been cleaned up
+    assert not Path(created_temp_dirs[0]).exists(), (
+        f"Temp directory {created_temp_dirs[0]} was not cleaned up"
+    )
 
 
 def test_keyboard_interrupt_signals_cancellation(flat_topology, worker_config):
