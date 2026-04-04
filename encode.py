@@ -460,7 +460,23 @@ def main(
 
     console.print(f"Found [cyan]{len(source_files)}[/cyan] video file(s).\n")
 
-    # ── Show source info table ──────────────────────────────────────
+    # ── Adjust worker count if fewer files than workers ────────────
+    if len(source_files) < worker_cfg.num_workers:
+        new_workers = len(source_files)
+        new_threads = max(1, topo.total_threads // new_workers)
+        log.info(
+            "Reducing workers from %d to %d (only %d file(s)), threads/worker: %d -> %d",
+            worker_cfg.num_workers, new_workers, len(source_files),
+            worker_cfg.threads_per_worker, new_threads,
+        )
+        worker_cfg = WorkerConfig(
+            num_workers=new_workers,
+            threads_per_worker=new_threads,
+            topology=topo,
+            numa_strategy=worker_cfg.numa_strategy,
+        )
+
+    # ── Show source info table ──────────────────────────���───────────
     src_table = Table(title="Source Files", show_lines=True)
     src_table.add_column("Filename")
     src_table.add_column("Codec")
