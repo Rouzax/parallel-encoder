@@ -202,7 +202,17 @@ def preset_to_ffmpeg_args(
 
     colorspace: str | None = video.get("colorspace")
     if colorspace == "bt709":
-        vf_filters.append("colorspace=all=bt709:iall=bt601-6-625")
+        source_primaries = source_info.get("video_colour_primaries")
+        # Skip conversion if source is already BT.709 or unknown
+        if source_primaries not in ("bt709", None):
+            # Map known primaries to FFmpeg's colorspace input name
+            iall_map = {
+                "bt470bg": "bt601-6-625",       # PAL
+                "smpte170m": "bt601-6-525",      # NTSC
+                "bt470m": "bt601-6-525",         # NTSC (older)
+            }
+            iall = iall_map.get(source_primaries, "bt601-6-625")
+            vf_filters.append(f"colorspace=all=bt709:iall={iall}")
 
     if vf_filters:
         # Scope filter to main video only when cover art streams are mapped

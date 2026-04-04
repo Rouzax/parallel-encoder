@@ -264,3 +264,40 @@ def test_preset_to_ffmpeg_args_webm_ignores_cover_art():
     # WebM must use -vf, not -filter:v:0 (even if source has cover art)
     assert "-vf" in args
     assert "-filter:v:0" not in args
+
+
+def test_preset_bt709_colorspace_skips_already_bt709():
+    """Source already in BT.709 should not get colorspace filter."""
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium", "colorspace": "bt709"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [],
+        "video_colour_primaries": "bt709",
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    assert "colorspace" not in " ".join(args), "Should skip conversion when source is already BT.709"
+
+
+def test_preset_bt709_colorspace_converts_bt601():
+    """Source in BT.601 should get colorspace conversion filter."""
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium", "colorspace": "bt709"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 720, "video_height": 576,
+        "audio_streams": [],
+        "video_colour_primaries": "bt470bg",
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    assert "-vf" in args
+    vf_idx = args.index("-vf")
+    assert "colorspace" in args[vf_idx + 1]
+    assert "bt601-6-625" in args[vf_idx + 1]
