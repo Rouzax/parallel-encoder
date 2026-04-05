@@ -21,6 +21,7 @@ from encoder.worker_pool import (
     WorkerConfig,
     auto_detect_workers,
     detect_topology,
+    max_useful_threads,
 )
 from presets.loader import get_preset_by_name, list_preset_names, load_presets
 from ui.progress import EncodingProgress, print_summary_table
@@ -464,6 +465,13 @@ def main(
     if len(source_files) < worker_cfg.num_workers:
         new_workers = len(source_files)
         new_threads = max(1, topo.total_threads // new_workers)
+
+        # Cap threads at the codec's useful maximum — extra threads are wasted
+        # for codecs with tile-based parallelism (e.g. VP9).
+        cap = max_useful_threads(codec)
+        if cap is not None and new_threads > cap:
+            new_threads = cap
+
         log.info(
             "Reducing workers from %d to %d (only %d file(s)), threads/worker: %d -> %d",
             worker_cfg.num_workers, new_workers, len(source_files),

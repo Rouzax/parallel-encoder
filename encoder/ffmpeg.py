@@ -218,6 +218,7 @@ def build_command(
     command.extend(args)
     if not uses_internal_threading:
         command.extend(thread_args)
+
     command.append(output)
 
     return command

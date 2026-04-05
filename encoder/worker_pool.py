@@ -24,14 +24,26 @@ from presets.loader import preset_to_ffmpeg_args
 
 _log = logging.getLogger("parallel-encoder")
 
-# Default threads-per-worker by codec name.
+# Default (ideal) threads-per-worker by codec name.
 _CODEC_THREADS: dict[str, int] = {
     "libx265": 16,
     "libsvtav1": 20,
     "libx264": 8,
-    "libvpx-vp9": 12,
+    "libvpx-vp9": 8,
 }
 _DEFAULT_THREADS_PER_WORKER = 12
+
+# Hard ceiling on useful threads per worker.  Codecs with tile-based
+# parallelism (VP9) cannot exploit more threads than their tile layout
+# allows — extra threads just sit idle.
+_CODEC_MAX_THREADS: dict[str, int] = {
+    "libvpx-vp9": 8,
+}
+
+
+def max_useful_threads(codec: str) -> int | None:
+    """Return the max useful thread count for *codec*, or *None* if uncapped."""
+    return _CODEC_MAX_THREADS.get(codec)
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +403,8 @@ class ParallelEncoder:
             if self.config.numa_strategy == "pin_to_node":
                 numa_node = len(jobs) % self.config.topology.numa_nodes
 
-            # Carry cover art info for MKV re-attachment
+            # Carry cover art info for MKV re-attachment (WebM doesn't
+            # support attachments; sidecar files handle external artwork)
             cover_art: list[dict] = source_info.get("cover_art", [])
 
             jobs.append(
@@ -566,6 +579,7 @@ class ParallelEncoder:
                 numa_node=job.numa_node,
                 threads_per_numa=self.config.topology.threads_per_numa,
             )
+
             return result
         except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
             _log.error("Unexpected error encoding %s: %s", job.source_path, exc, exc_info=True)

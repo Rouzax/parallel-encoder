@@ -278,8 +278,21 @@ def print_summary_table(
 
             src_sz: int = sf.get("file_size", 0)
             tgt_sz: int = tf.get("file_size", 0)
+            src_dur: float = sf.get("duration", 0.0)
+            tgt_dur: float = tf.get("duration", 0.0)
+
             if src_sz > 0:
-                pct = ((tgt_sz - src_sz) / src_sz) * 100
+                # For test encodes (target much shorter than source),
+                # compare bitrate instead of file size
+                if tgt_dur > 0 and src_dur > 0 and tgt_dur < src_dur * 0.9:
+                    src_br = sf.get("total_bitrate") or sf.get("video_bitrate") or 0
+                    tgt_br = tf.get("total_bitrate") or tf.get("video_bitrate") or 0
+                    if src_br > 0:
+                        pct = ((tgt_br - src_br) / src_br) * 100
+                    else:
+                        pct = 0.0
+                else:
+                    pct = ((tgt_sz - src_sz) / src_sz) * 100
                 colour = "green" if pct <= 0 else "red"
                 reduction_text = Text(f"{pct:+.1f}%", style=colour)
 

@@ -180,101 +180,168 @@ presets:
       language: eng
     subtitles: first
 
+
   # ─────────────────────────────────────────────────────────────
-  # AV1 (SVT-AV1) — 720p BT.709 presets (MKV container, all audio)
+  # AV1 (SVT-AV1) — 720p BT.709 preset 8 (WebM, car testing)
   # ─────────────────────────────────────────────────────────────
-  mkv-720p-av1-bt709-crf32-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - P8 CRF32 - All Audio Passthru"
-    container: mkv
+  webm-720p-av1-bt709-crf32-opus:
+    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF32 - Opus"
+    container: webm
     video:
       codec: libsvtav1
       crf: 32
       preset: 8
       max_width: 1280
       max_height: 720
-      pix_fmt: yuv420p10le
+      pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: passthrough
-    subtitles: first
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
 
-  mkv-720p-av1-bt709-crf35-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - P8 CRF35 - All Audio Passthru"
-    container: mkv
+  webm-720p-av1-bt709-crf35-opus:
+    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF35 - Opus"
+    container: webm
     video:
       codec: libsvtav1
       crf: 35
       preset: 8
       max_width: 1280
       max_height: 720
-      pix_fmt: yuv420p10le
+      pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: passthrough
-    subtitles: first
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
 
-  mkv-720p-av1-bt709-crf38-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - P8 CRF38 - All Audio Passthru"
-    container: mkv
+  webm-720p-av1-bt709-crf38-opus:
+    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF38 - Opus"
+    container: webm
     video:
       codec: libsvtav1
       crf: 38
       preset: 8
       max_width: 1280
       max_height: 720
-      pix_fmt: yuv420p10le
+      pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: passthrough
-    subtitles: first
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
 
   # ─────────────────────────────────────────────────────────────
-  # AV1 (SVT-AV1) — 720p BT.709 preset 6 (slower, better quality)
+  # AV1 (SVT-AV1) — 720p BT.709 preset 6 (WebM, car testing)
   # ─────────────────────────────────────────────────────────────
-  mkv-720p-av1-bt709-p6-crf32-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - P6 CRF32 - All Audio Passthru"
-    container: mkv
+  webm-720p-av1-bt709-p6-crf32-opus:
+    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF32 - Opus"
+    container: webm
     video:
       codec: libsvtav1
       crf: 32
       preset: 6
       max_width: 1280
       max_height: 720
-      pix_fmt: yuv420p10le
+      pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: passthrough
-    subtitles: first
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
 
-  mkv-720p-av1-bt709-p6-crf35-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - P6 CRF35 - All Audio Passthru"
-    container: mkv
+  webm-720p-av1-bt709-p6-crf35-opus:
+    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF35 - Opus"
+    container: webm
     video:
       codec: libsvtav1
       crf: 35
       preset: 6
       max_width: 1280
       max_height: 720
-      pix_fmt: yuv420p10le
+      pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: passthrough
-    subtitles: first
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
 
-  mkv-720p-av1-bt709-p6-crf38-all-audio:
-    display_name: "MKV - 720p - AV1 - BT.709 - P6 CRF38 - All Audio Passthru"
-    container: mkv
+  webm-720p-av1-bt709-p6-crf38-opus:
+    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF38 - Opus"
+    container: webm
     video:
       codec: libsvtav1
       crf: 38
       preset: 6
       max_width: 1280
       max_height: 720
-      pix_fmt: yuv420p10le
+      pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: passthrough
-    subtitles: first
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
+
+  # ─────────────────────────────────────────────────────────────
+  # VP9 — 720p BT.709 (WebM, car direct play)
+  # ─────────────────────────────────────────────────────────────
+  webm-720p-vp9-bt709-crf32-opus:
+    display_name: "WebM - 720p - VP9 - BT.709 - CRF32 - Opus"
+    container: webm
+    video:
+      codec: libvpx-vp9
+      crf: 32
+      speed: 4
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+      colorspace: bt709
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
+
+  webm-720p-vp9-bt709-crf35-opus:
+    display_name: "WebM - 720p - VP9 - BT.709 - CRF35 - Opus"
+    container: webm
+    video:
+      codec: libvpx-vp9
+      crf: 35
+      speed: 4
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+      colorspace: bt709
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
+
+  webm-720p-vp9-bt709-crf38-opus:
+    display_name: "WebM - 720p - VP9 - BT.709 - CRF38 - Opus"
+    container: webm
+    video:
+      codec: libvpx-vp9
+      crf: 38
+      speed: 4
+      max_width: 1280
+      max_height: 720
+      pix_fmt: yuv420p
+      colorspace: bt709
+    audio:
+      mode: transcode
+      codec: libopus
+      bitrate: "128k"
+    subtitles: none
 
   # ─────────────────────────────────────────────────────────────
   # H.265 10-bit — 5K presets (MP4 container)
@@ -344,48 +411,4 @@ presets:
       language: eng
     subtitles: first
 
-  # ─────────────────────────────────────────────────────────────
-  # AV1 (SVT-AV1) presets
-  # ─────────────────────────────────────────────────────────────
-  mkv-1080p-av1-crf22-all-audio:
-    display_name: "MKV - 1080p - AV1 - CRF22 - All Audio Passthru"
-    container: mkv
-    video:
-      codec: libsvtav1
-      crf: 22
-      preset: 6
-      max_width: 1920
-      max_height: 1080
-      pix_fmt: yuv420p10le
-    audio:
-      mode: passthrough
-    subtitles: all
-
-  mkv-1080p-av1-crf28-all-audio:
-    display_name: "MKV - 1080p - AV1 - CRF28 - All Audio Passthru"
-    container: mkv
-    video:
-      codec: libsvtav1
-      crf: 28
-      preset: 6
-      max_width: 1920
-      max_height: 1080
-      pix_fmt: yuv420p10le
-    audio:
-      mode: passthrough
-    subtitles: all
-
-  mkv-720p-av1-crf28-all-audio:
-    display_name: "MKV - 720p - AV1 - CRF28 - All Audio Passthru"
-    container: mkv
-    video:
-      codec: libsvtav1
-      crf: 28
-      preset: 6
-      max_width: 1280
-      max_height: 720
-      pix_fmt: yuv420p10le
-    audio:
-      mode: passthrough
-    subtitles: all
 
