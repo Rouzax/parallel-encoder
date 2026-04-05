@@ -566,6 +566,16 @@ def main(
                 sys.exit(0)
 
     # ── Full encode ─────────────────────────────────────────────────
+    sidecar_cb = None
+    if copy_all:
+        _source_root = Path(source)
+        _output_root = Path(output)
+        def _sidecar_cb(result: EncodingResult) -> None:
+            _copy_sidecars_for_file(
+                Path(result.source_path), _source_root, _output_root, video_extensions,
+            )
+        sidecar_cb = _sidecar_cb
+
     results, skipped_paths = _run_encoding(
         source_files=source_files,
         source_folder=source,
@@ -576,26 +586,18 @@ def main(
         ffmpeg_path=ffmpeg_path,
         dry_run=dry_run,
         overwrite=overwrite,
+        on_file_complete=sidecar_cb,
     )
 
     if dry_run:
         sys.exit(0)
 
-    # Copy sidecar files after all encoding is complete.
-    if copy_all:
+    # Copy sidecars for skipped files (already existed, not re-encoded).
+    if copy_all and skipped_paths:
         source_root = Path(source)
         output_root = Path(output)
-        sidecar_sources: set[str] = set(skipped_paths)
-        for r in results:
-            if r.success:
-                sidecar_sources.add(r.source_path)
-        total_copied = 0
-        for sp in sidecar_sources:
-            total_copied += _copy_sidecars_for_file(
-                Path(sp), source_root, output_root, video_extensions,
-            )
-        if total_copied:
-            console.print(f"[dim]Copied {total_copied} sidecar file(s).[/dim]")
+        for sp in skipped_paths:
+            _copy_sidecars_for_file(Path(sp), source_root, output_root, video_extensions)
 
     # ── Summary ─────────────────────────────────────────────────────
     target_files = probe_folder(output, extensions=video_extensions)
