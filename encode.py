@@ -231,26 +231,48 @@ def _cleanup_test_outputs(output_paths: list[str]) -> None:
             pass
 
 
+def _collect_video_stems(directory: Path, video_extensions: tuple[str, ...]) -> set[str]:
+    """Return the set of stems for all video files in *directory*."""
+    ext_lower = {e.lower().lstrip(".") for e in video_extensions}
+    return {
+        f.stem
+        for f in directory.iterdir()
+        if f.is_file() and f.suffix.lstrip(".").lower() in ext_lower
+    }
+
+
 def _copy_sidecars_for_file(
     source_path: Path,
     source_root: Path,
     output_root: Path,
     video_extensions: tuple[str, ...],
 ) -> int:
-    """Copy non-video sidecar files from the same directory as *source_path*.
+    """Copy non-video sidecar files that belong to *source_path*.
 
-    Only copies files that don't already exist in the output (avoids
-    re-copying when multiple videos share a directory).
+    A sidecar belongs to a video when its filename starts with the video's
+    stem (e.g. ``movie-fanart.jpg`` is a sidecar of ``movie.mkv``).
+    Directory-level files that don't match *any* video stem (e.g.
+    ``folder.jpg``) are also copied.
+
+    Only copies files that don't already exist in the output.
 
     Returns the number of files copied.
     """
     ext_lower: set[str] = {e.lower().lstrip(".") for e in video_extensions}
     src_dir = source_path.parent
+    video_stem = source_path.stem
+    all_video_stems = _collect_video_stems(src_dir, video_extensions)
     copied = 0
     for src_file in src_dir.iterdir():
         if not src_file.is_file() or src_file.is_symlink():
             continue
         if src_file.suffix.lstrip(".").lower() in ext_lower:
+            continue
+        # Copy if the sidecar matches this video's stem, or if it doesn't
+        # match any video stem (directory-level file like folder.jpg).
+        matches_this = src_file.name.startswith(video_stem)
+        matches_any = any(src_file.name.startswith(s) for s in all_video_stems)
+        if not matches_this and matches_any:
             continue
         relative = src_file.relative_to(source_root)
         dst_file = output_root / relative
