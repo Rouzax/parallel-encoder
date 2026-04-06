@@ -301,3 +301,82 @@ def test_preset_bt709_colorspace_converts_bt601():
     vf_idx = args.index("-vf")
     assert "colorspace" in args[vf_idx + 1]
     assert "bt601-6-625" in args[vf_idx + 1]
+
+
+# ---------------------------------------------------------------------------
+# Tests for two-step preset selector helpers
+# ---------------------------------------------------------------------------
+
+from encode import _codec_display_name, _group_presets_by_category, _preset_short_name
+
+
+def test_codec_display_name_known_codecs():
+    assert _codec_display_name("libx265") == "H265 10-bit"
+    assert _codec_display_name("libsvtav1") == "AV1"
+    assert _codec_display_name("libx264") == "H264"
+    assert _codec_display_name("libvpx-vp9") == "VP9"
+
+
+def test_codec_display_name_unknown_codec():
+    assert _codec_display_name("librav1e") == "librav1e"
+
+
+def test_group_presets_by_category():
+    presets = {
+        "mkv-h265-cq20": {
+            "display_name": "MKV - H265 10-bit - Medium CQ20 - All Audio Passthru",
+            "container": "mkv",
+            "video": {"codec": "libx265", "crf": 20, "preset": "medium"},
+            "audio": {"mode": "passthrough"},
+        },
+        "mkv-h265-cq25": {
+            "display_name": "MKV - H265 10-bit - Medium CQ25 - All Audio Passthru",
+            "container": "mkv",
+            "video": {"codec": "libx265", "crf": 25, "preset": "medium"},
+            "audio": {"mode": "passthrough"},
+        },
+        "webm-av1-crf32": {
+            "display_name": "WebM - 720p - AV1 - BT.709 - P8 CRF32",
+            "container": "webm",
+            "video": {"codec": "libsvtav1", "crf": 32, "preset": 8},
+            "audio": {"mode": "passthrough"},
+        },
+    }
+    groups = _group_presets_by_category(presets)
+    assert "MKV - H265 10-bit" in groups
+    assert "WEBM - AV1" in groups
+    assert len(groups["MKV - H265 10-bit"]) == 2
+    assert len(groups["WEBM - AV1"]) == 1
+
+
+def test_group_presets_preserves_order():
+    presets = {
+        "webm-first": {
+            "display_name": "WebM First",
+            "container": "webm",
+            "video": {"codec": "libsvtav1", "crf": 32, "preset": 8},
+            "audio": {"mode": "passthrough"},
+        },
+        "mkv-second": {
+            "display_name": "MKV Second",
+            "container": "mkv",
+            "video": {"codec": "libx265", "crf": 20, "preset": "medium"},
+            "audio": {"mode": "passthrough"},
+        },
+    }
+    groups = _group_presets_by_category(presets)
+    categories = list(groups.keys())
+    assert categories[0] == "WEBM - AV1"
+    assert categories[1] == "MKV - H265 10-bit"
+
+
+def test_preset_short_name_strips_prefix():
+    assert _preset_short_name(
+        "MKV - 1080p - H265 10-bit - Medium CQ20 - All Audio Passthru",
+        "MKV - H265 10-bit"
+    ) == "1080p - Medium CQ20 - All Audio Passthru"
+
+
+def test_preset_short_name_no_match():
+    name = "WebM - 720p - AV1 - BT.709 - P8 CRF32"
+    assert _preset_short_name(name, "MKV - H265 10-bit") == name
