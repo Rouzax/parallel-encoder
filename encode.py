@@ -31,6 +31,51 @@ console = Console(highlight=False)
 # Default preset file location: config/presets.yaml next to this script.
 _DEFAULT_PRESET_FILE = Path(__file__).resolve().parent / "config" / "presets.yaml"
 
+_CODEC_DISPLAY_NAMES = {
+    "libx265": "H265 10-bit",
+    "libsvtav1": "AV1",
+    "libx264": "H264",
+    "libvpx-vp9": "VP9",
+}
+
+
+def _codec_display_name(codec: str) -> str:
+    """Map an FFmpeg codec ID to a human-readable name."""
+    return _CODEC_DISPLAY_NAMES.get(codec, codec)
+
+
+def _group_presets_by_category(
+    presets: dict[str, dict[str, Any]],
+) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+    """Group presets by container + codec into an insertion-ordered dict."""
+    groups: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for key, cfg in presets.items():
+        container = cfg.get("container", "mkv").upper()
+        codec = cfg["video"]["codec"]
+        category = f"{container} - {_codec_display_name(codec)}"
+        groups.setdefault(category, []).append((key, cfg))
+    return groups
+
+
+def _preset_short_name(display_name: str, category: str) -> str:
+    """Strip the category prefix from a display name for compact display."""
+    container_prefix = category.split(" - ")[0]
+    codec_part = " - ".join(category.split(" - ")[1:])
+
+    parts = display_name.split(" - ")
+    filtered = []
+    skip_codec = False
+    for part in parts:
+        stripped = part.strip()
+        if stripped == container_prefix and not filtered:
+            continue
+        if stripped == codec_part and not skip_codec:
+            skip_codec = True
+            continue
+        filtered.append(stripped)
+
+    return " - ".join(filtered) if filtered else display_name
+
 
 def _select_preset_interactive(presets: dict[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
     """Show an interactive menu and return (key, config) for the chosen preset."""
