@@ -285,12 +285,13 @@ def _parse_progress_line(line: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def _set_windows_process_numa(process_handle: int, numa_node: int) -> bool:
-    """Pin a Windows process to a NUMA node via SetProcessDefaultCpuSetMasks.
+def _set_windows_process_numa(process_handle: int, process_id: int, numa_node: int) -> bool:
+    """Pin a Windows process to a NUMA node.
 
-    All current and future threads of the process inherit this restriction.
-    Requires Windows 11 / Server 2022+.  Falls back gracefully on older
-    Windows (returns False).
+    Uses SetProcessAffinityMask (all Windows versions, affects all existing
+    threads) as the primary method.  Falls back to per-thread group affinity
+    for cross-group NUMA nodes, and to SetProcessDefaultCpuSetMasks
+    (Server 2022+ / Win11+) for future threads.
     """
     import ctypes
     import ctypes.wintypes
@@ -304,29 +305,194 @@ def _set_windows_process_numa(process_handle: int, numa_node: int) -> bool:
             ("Reserved", ctypes.wintypes.WORD * 3),
         ]
 
-    # Zero-initialize (Reserved fields must be zero)
+    # -- Resolve NUMA node to processor group + mask ----------------------
     affinity = GROUP_AFFINITY()
     ctypes.memset(ctypes.byref(affinity), 0, ctypes.sizeof(GROUP_AFFINITY))
 
-    # Get processor group + mask for this NUMA node
+    kernel32.GetNumaNodeProcessorMaskEx.argtypes = [
+        ctypes.c_ushort, ctypes.POINTER(GROUP_AFFINITY),
+    ]
+    kernel32.GetNumaNodeProcessorMaskEx.restype = ctypes.wintypes.BOOL
+
     if not kernel32.GetNumaNodeProcessorMaskEx(
         ctypes.c_ushort(numa_node), ctypes.byref(affinity),
     ):
-        _log.warning("GetNumaNodeProcessorMaskEx failed for node %d", numa_node)
+        _log.warning("GetNumaNodeProcessorMaskEx failed for NUMA node %d", numa_node)
         return False
 
-    # Pin process — all current and future threads inherit this
-    if not kernel32.SetProcessDefaultCpuSetMasks(
-        process_handle, ctypes.byref(affinity), ctypes.c_ushort(1),
-    ):
-        _log.warning("SetProcessDefaultCpuSetMasks failed for node %d", numa_node)
-        return False
-
+    target_group = affinity.Group
+    target_mask = affinity.Mask
     _log.debug(
-        "Pinned process to NUMA node %d (group=%d, mask=0x%x)",
-        numa_node, affinity.Group, affinity.Mask,
+        "NUMA node %d -> group=%d, mask=0x%x (%d processors)",
+        numa_node, target_group, target_mask, bin(target_mask).count("1"),
     )
-    return True
+
+    handle = ctypes.wintypes.HANDLE(process_handle)
+
+    # -- Determine the process's current processor group ------------------
+    # New processes inherit their parent's group (typically group 0).
+    # SetProcessAffinityMask silently applies the mask within the process's
+    # current group even when the target is a different group, so we must
+    # detect cross-group situations and use per-thread pinning instead.
+    process_group = _get_process_group(kernel32, handle)
+
+    if target_group == process_group:
+        # -- Same group: SetProcessAffinityMask (all existing threads) ----
+        kernel32.SetProcessAffinityMask.argtypes = [
+            ctypes.wintypes.HANDLE, ctypes.c_size_t,
+        ]
+        kernel32.SetProcessAffinityMask.restype = ctypes.wintypes.BOOL
+
+        if kernel32.SetProcessAffinityMask(handle, target_mask):
+            _log.info(
+                "Pinned process (PID %d) to NUMA node %d via "
+                "SetProcessAffinityMask (group=%d, mask=0x%x)",
+                process_id, numa_node, target_group, target_mask,
+            )
+            return True
+        _log.warning(
+            "SetProcessAffinityMask failed for PID %d, NUMA node %d",
+            process_id, numa_node,
+        )
+        return False
+
+    # -- Cross-group: per-thread SetThreadGroupAffinity -------------------
+    # SetProcessAffinityMask cannot move threads to a different processor
+    # group, so we enumerate threads and pin each one individually.
+    pinned = _pin_threads_to_group(
+        kernel32, process_id, target_group, target_mask, GROUP_AFFINITY,
+    )
+    if pinned:
+        _log.info(
+            "Pinned %d thread(s) of PID %d to NUMA node %d via "
+            "SetThreadGroupAffinity (group=%d, mask=0x%x)",
+            pinned, process_id, numa_node, target_group, target_mask,
+        )
+
+    # -- SetProcessDefaultCpuSetMasks for future threads ------------------
+    # Ensures threads created after our enumeration also land on the
+    # correct NUMA node.  Server 2022+ / Windows 11+ only.
+    try:
+        kernel32.SetProcessDefaultCpuSetMasks.argtypes = [
+            ctypes.wintypes.HANDLE,
+            ctypes.POINTER(GROUP_AFFINITY),
+            ctypes.c_ushort,
+        ]
+        kernel32.SetProcessDefaultCpuSetMasks.restype = ctypes.wintypes.BOOL
+        if kernel32.SetProcessDefaultCpuSetMasks(
+            handle, ctypes.byref(affinity), ctypes.c_ushort(1),
+        ):
+            _log.debug(
+                "SetProcessDefaultCpuSetMasks OK for PID %d, NUMA node %d",
+                process_id, numa_node,
+            )
+    except (AttributeError, OSError):
+        pass  # Not available on this Windows version
+
+    return pinned > 0
+
+
+def _get_process_group(kernel32, handle) -> int:  # type: ignore[no-untyped-def]
+    """Return the processor group a process currently belongs to.
+
+    Uses GetProcessGroupAffinity which returns the list of groups the
+    process is associated with.  For a freshly spawned process this is
+    typically a single group inherited from the parent.  Returns 0 on
+    failure (safe default — new processes start in group 0).
+    """
+    import ctypes
+    import ctypes.wintypes
+
+    kernel32.GetProcessGroupAffinity.argtypes = [
+        ctypes.wintypes.HANDLE,
+        ctypes.POINTER(ctypes.wintypes.USHORT),
+        ctypes.POINTER(ctypes.wintypes.USHORT),
+    ]
+    kernel32.GetProcessGroupAffinity.restype = ctypes.wintypes.BOOL
+
+    group_count = ctypes.wintypes.USHORT(1)
+    groups = (ctypes.wintypes.USHORT * 1)()
+
+    if kernel32.GetProcessGroupAffinity(handle, ctypes.byref(group_count), groups):
+        return groups[0]
+    return 0
+
+
+def _pin_threads_to_group(
+    kernel32,  # type: ignore[no-untyped-def]
+    process_id: int,
+    target_group: int,
+    target_mask: int,
+    group_affinity_cls: type,
+) -> int:
+    """Enumerate threads of *process_id* and pin each to *target_group*/*target_mask*.
+
+    Returns the number of threads successfully pinned.
+
+    Note: argtypes are intentionally NOT set on kernel32 functions here.
+    Multiple worker threads call this concurrently, and setting argtypes
+    on the shared kernel32 object with locally-defined ctypes Structure
+    classes causes race conditions (LP_THREADENTRY32 type mismatch).
+    """
+    import ctypes
+    import ctypes.wintypes
+
+    TH32CS_SNAPTHREAD = 0x00000004
+    THREAD_SET_INFORMATION = 0x0020
+    THREAD_QUERY_INFORMATION = 0x0040
+    INVALID_HANDLE = ctypes.wintypes.HANDLE(-1).value
+
+    class THREADENTRY32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", ctypes.wintypes.DWORD),
+            ("cntUsage", ctypes.wintypes.DWORD),
+            ("th32ThreadID", ctypes.wintypes.DWORD),
+            ("th32OwnerProcessID", ctypes.wintypes.DWORD),
+            ("tpBasePri", ctypes.wintypes.LONG),
+            ("tpDeltaPri", ctypes.wintypes.LONG),
+            ("dwFlags", ctypes.wintypes.DWORD),
+        ]
+
+    snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)
+    if snap == INVALID_HANDLE:
+        _log.warning("CreateToolhelp32Snapshot failed")
+        return 0
+
+    new_affinity = group_affinity_cls()
+    ctypes.memset(ctypes.byref(new_affinity), 0, ctypes.sizeof(group_affinity_cls))
+    new_affinity.Mask = target_mask
+    new_affinity.Group = target_group
+
+    te = THREADENTRY32()
+    te.dwSize = ctypes.sizeof(THREADENTRY32)
+    pinned = 0
+
+    try:
+        if not kernel32.Thread32First(snap, ctypes.byref(te)):
+            return 0
+        while True:
+            if te.th32OwnerProcessID == process_id:
+                th = kernel32.OpenThread(
+                    THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION,
+                    False, te.th32ThreadID,
+                )
+                if th:
+                    if kernel32.SetThreadGroupAffinity(
+                        th, ctypes.byref(new_affinity), None,
+                    ):
+                        pinned += 1
+                    else:
+                        _log.debug(
+                            "SetThreadGroupAffinity failed for thread %d",
+                            te.th32ThreadID,
+                        )
+                    kernel32.CloseHandle(th)
+            if not kernel32.Thread32Next(snap, ctypes.byref(te)):
+                break
+    finally:
+        kernel32.CloseHandle(snap)
+
+    return pinned
 
 
 # ---------------------------------------------------------------------------
@@ -386,9 +552,9 @@ def run_encode(
         # Pin to NUMA node on Windows (Linux uses numactl prefix in _wrap_numa)
         if numa_node is not None and platform.system() == "Windows":
             try:
-                _set_windows_process_numa(process._handle, numa_node)  # type: ignore[union-attr]
+                _set_windows_process_numa(process._handle, process.pid, numa_node)  # type: ignore[union-attr]
             except (AttributeError, OSError) as exc:
-                _log.debug("Windows NUMA pinning unavailable: %s", exc)
+                _log.warning("Windows NUMA pinning failed: %s", exc)
 
         _log.debug("FFmpeg command: %s", " ".join(command))
 
