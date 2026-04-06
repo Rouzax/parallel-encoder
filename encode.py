@@ -85,26 +85,54 @@ def _preset_short_name(display_name: str, category: str) -> str:
 
 
 def _select_preset_interactive(presets: dict[str, dict[str, Any]]) -> tuple[str, dict[str, Any]]:
-    """Show an interactive menu and return (key, config) for the chosen preset."""
+    """Show a two-step interactive menu and return (key, config) for the chosen preset."""
     names = list_preset_names(presets)
 
     if len(names) == 1:
         console.print(f"[cyan]Auto-selecting the only preset:[/cyan] {names[0]}")
         return get_preset_by_name(presets, names[0])
 
-    console.print("\n[bold]Available presets:[/bold]")
-    for i, name in enumerate(names, 1):
-        console.print(f"  [cyan]{i:>2}[/cyan]  {name}")
+    groups = _group_presets_by_category(presets)
+    categories = list(groups.keys())
+
+    # Step 1: pick a category
+    console.print("\n[bold]Select a category:[/bold]")
+    for i, cat in enumerate(categories, 1):
+        count = len(groups[cat])
+        label = "preset" if count == 1 else "presets"
+        console.print(f"  [cyan]{i:>2}[/cyan]  {cat}  [dim]({count} {label})[/dim]")
 
     while True:
-        choice = Prompt.ask(
-            "\nSelect a preset by number",
-            console=console,
-        )
+        choice = Prompt.ask("\nCategory", console=console)
         try:
             idx = int(choice) - 1
-            if 0 <= idx < len(names):
-                return get_preset_by_name(presets, names[idx])
+            if 0 <= idx < len(categories):
+                break
+        except ValueError:
+            pass
+        console.print("[red]Invalid selection, try again.[/red]")
+
+    selected_cat = categories[idx]
+    cat_presets = groups[selected_cat]
+
+    # Auto-select if only one preset in category
+    if len(cat_presets) == 1:
+        key, cfg = cat_presets[0]
+        console.print(f"[cyan]Auto-selecting:[/cyan] {cfg['display_name']}")
+        return key, cfg
+
+    # Step 2: pick a preset within the category
+    console.print(f"\n[bold]{selected_cat} presets:[/bold]")
+    for i, (key, cfg) in enumerate(cat_presets, 1):
+        short = _preset_short_name(cfg["display_name"], selected_cat)
+        console.print(f"  [cyan]{i:>2}[/cyan]  {short}")
+
+    while True:
+        choice = Prompt.ask("\nPreset", console=console)
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(cat_presets):
+                return cat_presets[idx]
         except ValueError:
             pass
         console.print("[red]Invalid selection, try again.[/red]")
