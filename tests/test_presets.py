@@ -344,9 +344,9 @@ def test_group_presets_by_category():
     }
     groups = _group_presets_by_category(presets)
     assert "MKV - H265 10-bit" in groups
-    assert "WEBM - AV1" in groups
+    assert "WebM - AV1" in groups
     assert len(groups["MKV - H265 10-bit"]) == 2
-    assert len(groups["WEBM - AV1"]) == 1
+    assert len(groups["WebM - AV1"]) == 1
 
 
 def test_group_presets_preserves_order():
@@ -366,7 +366,7 @@ def test_group_presets_preserves_order():
     }
     groups = _group_presets_by_category(presets)
     categories = list(groups.keys())
-    assert categories[0] == "WEBM - AV1"
+    assert categories[0] == "WebM - AV1"
     assert categories[1] == "MKV - H265 10-bit"
 
 

@@ -31,6 +31,12 @@ console = Console(highlight=False)
 # Default preset file location: config/presets.yaml next to this script.
 _DEFAULT_PRESET_FILE = Path(__file__).resolve().parent / "config" / "presets.yaml"
 
+_CONTAINER_DISPLAY_NAMES = {
+    "mkv": "MKV",
+    "mp4": "MP4",
+    "webm": "WebM",
+}
+
 _CODEC_DISPLAY_NAMES = {
     "libx265": "H265 10-bit",
     "libsvtav1": "AV1",
@@ -50,7 +56,8 @@ def _group_presets_by_category(
     """Group presets by container + codec into an insertion-ordered dict."""
     groups: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for key, cfg in presets.items():
-        container = cfg.get("container", "mkv").upper()
+        raw = cfg.get("container", "mkv").lower()
+        container = _CONTAINER_DISPLAY_NAMES.get(raw, raw.upper())
         codec = cfg["video"]["codec"]
         category = f"{container} - {_codec_display_name(codec)}"
         groups.setdefault(category, []).append((key, cfg))
