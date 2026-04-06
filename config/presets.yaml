@@ -184,8 +184,8 @@ presets:
   # ─────────────────────────────────────────────────────────────
   # AV1 (SVT-AV1) — 720p BT.709 preset 8 (WebM, car testing)
   # ─────────────────────────────────────────────────────────────
-  webm-720p-av1-bt709-crf32-opus:
-    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF32 - Opus"
+  webm-720p-av1-bt709-crf32:
+    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF32"
     container: webm
     video:
       codec: libsvtav1
@@ -196,13 +196,11 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
-  webm-720p-av1-bt709-crf35-opus:
-    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF35 - Opus"
+  webm-720p-av1-bt709-crf35:
+    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF35"
     container: webm
     video:
       codec: libsvtav1
@@ -213,13 +211,11 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
-  webm-720p-av1-bt709-crf38-opus:
-    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF38 - Opus"
+  webm-720p-av1-bt709-crf38:
+    display_name: "WebM - 720p - AV1 - BT.709 - P8 CRF38"
     container: webm
     video:
       codec: libsvtav1
@@ -230,16 +226,14 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
   # ─────────────────────────────────────────────────────────────
   # AV1 (SVT-AV1) — 720p BT.709 preset 6 (WebM, car testing)
   # ─────────────────────────────────────────────────────────────
-  webm-720p-av1-bt709-p6-crf32-opus:
-    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF32 - Opus"
+  webm-720p-av1-bt709-p6-crf32:
+    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF32"
     container: webm
     video:
       codec: libsvtav1
@@ -250,13 +244,11 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
-  webm-720p-av1-bt709-p6-crf35-opus:
-    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF35 - Opus"
+  webm-720p-av1-bt709-p6-crf35:
+    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF35"
     container: webm
     video:
       codec: libsvtav1
@@ -267,13 +259,11 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
-  webm-720p-av1-bt709-p6-crf38-opus:
-    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF38 - Opus"
+  webm-720p-av1-bt709-p6-crf38:
+    display_name: "WebM - 720p - AV1 - BT.709 - P6 CRF38"
     container: webm
     video:
       codec: libsvtav1
@@ -284,16 +274,14 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
   # ─────────────────────────────────────────────────────────────
   # VP9 — 720p BT.709 (WebM, car direct play)
   # ─────────────────────────────────────────────────────────────
-  webm-720p-vp9-bt709-crf32-opus:
-    display_name: "WebM - 720p - VP9 - BT.709 - CRF32 - Opus"
+  webm-720p-vp9-bt709-crf32:
+    display_name: "WebM - 720p - VP9 - BT.709 - CRF32"
     container: webm
     video:
       codec: libvpx-vp9
@@ -304,13 +292,11 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
-  webm-720p-vp9-bt709-crf35-opus:
-    display_name: "WebM - 720p - VP9 - BT.709 - CRF35 - Opus"
+  webm-720p-vp9-bt709-crf35:
+    display_name: "WebM - 720p - VP9 - BT.709 - CRF35"
     container: webm
     video:
       codec: libvpx-vp9
@@ -321,13 +307,11 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
-  webm-720p-vp9-bt709-crf38-opus:
-    display_name: "WebM - 720p - VP9 - BT.709 - CRF38 - Opus"
+  webm-720p-vp9-bt709-crf38:
+    display_name: "WebM - 720p - VP9 - BT.709 - CRF38"
     container: webm
     video:
       codec: libvpx-vp9
@@ -338,9 +322,7 @@ presets:
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
-      mode: transcode
-      codec: libopus
-      bitrate: "128k"
+      mode: passthrough
     subtitles: none
 
   # ─────────────────────────────────────────────────────────────
