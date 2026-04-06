@@ -328,8 +328,8 @@ def _run_encoding(
 
     _log = logging.getLogger("parallel-encoder")
     for job in jobs:
-        _log.debug("Prepared job: source=%s output=%s threads=%d numa=%s",
-                    job.source_path, job.output_path, job.threads, job.numa_node)
+        _log.debug("Prepared job: source=%s output=%s threads=%d",
+                    job.source_path, job.output_path, job.threads)
 
     if dry_run:
         from encoder.ffmpeg import build_command

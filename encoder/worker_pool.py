@@ -6,6 +6,7 @@ distributing CPU threads across workers based on codec and NUMA topology.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import platform
@@ -324,6 +325,11 @@ class ParallelEncoder:
         self._cancel_event = threading.Event()
         import shutil as _shutil
         self._numactl_available: bool = _shutil.which("numactl") is not None
+        # NUMA node assignment: each worker thread gets a fixed node on
+        # first use via round-robin, and keeps it for all subsequent jobs.
+        self._worker_numa: dict[int, int] = {}
+        self._worker_numa_lock = threading.Lock()
+        self._numa_counter = itertools.count()
 
     # ------------------------------------------------------------------
     # Job preparation
@@ -398,11 +404,6 @@ class ParallelEncoder:
                 # If video is shorter than test_seconds, encode the whole thing
                 # (test_encode_dict stays None).
 
-            # Assign NUMA node round-robin when using pin_to_node strategy
-            numa_node: int | None = None
-            if self.config.numa_strategy == "pin_to_node":
-                numa_node = len(jobs) % self.config.topology.numa_nodes
-
             # Carry cover art info for MKV re-attachment (WebM doesn't
             # support attachments; sidecar files handle external artwork)
             cover_art: list[dict] = source_info.get("cover_art", [])
@@ -414,7 +415,6 @@ class ParallelEncoder:
                     preset_args=preset_args,
                     threads=self.threads_per_worker,
                     test_encode=test_encode_dict,
-                    numa_node=numa_node,
                     cover_art=cover_art if container.lower() in ("mkv", "matroska") else [],
                 )
             )
@@ -499,6 +499,27 @@ class ParallelEncoder:
 
         return results
 
+    def _get_worker_numa(self) -> int | None:
+        """Return the NUMA node for the current worker thread.
+
+        On first call from a given thread, assigns a node via round-robin
+        and caches it.  Returns None when NUMA pinning is not active.
+        """
+        if self.config.numa_strategy != "pin_to_node":
+            return None
+        tid = threading.get_ident()
+        node = self._worker_numa.get(tid)
+        if node is not None:
+            return node
+        with self._worker_numa_lock:
+            # Double-check after acquiring lock
+            if tid in self._worker_numa:
+                return self._worker_numa[tid]
+            node = next(self._numa_counter) % self.config.topology.numa_nodes
+            self._worker_numa[tid] = node
+            _log.debug("Worker thread %d assigned to NUMA node %d", tid, node)
+            return node
+
     def _has_numactl(self) -> bool:
         """Check if numactl is available (Linux only)."""
         return self._numactl_available
@@ -555,8 +576,9 @@ class ParallelEncoder:
                 test_encode=job.test_encode,
             )
 
-            # Pin to NUMA node if assigned
-            command = self._wrap_numa(command, job.numa_node)
+            # Pin to NUMA node based on worker thread, not job
+            numa_node = self._get_worker_numa()
+            command = self._wrap_numa(command, numa_node)
 
             filename = Path(job.source_path).name
 
@@ -576,7 +598,7 @@ class ParallelEncoder:
                 command,
                 progress_callback=per_file_cb,
                 cancel_event=self._cancel_event,
-                numa_node=job.numa_node,
+                numa_node=numa_node,
                 threads_per_numa=self.config.topology.threads_per_numa,
             )
 
