@@ -591,6 +591,7 @@ def run_encode(
         # progress lines from FFmpeg.
         last_progress_time = time.monotonic()
         stall_warned = False
+        numa_repinned = numa_node is None  # skip re-pin when not using NUMA
 
         while True:
             line = process.stderr.readline()
@@ -620,6 +621,19 @@ def run_encode(
                     last_progress_time = time.monotonic()
                     stall_warned = False
                     progress_callback(progress)
+
+                    # Re-pin threads on first progress line.  By this point
+                    # FFmpeg/SVT-AV1 has created all encoder threads, so a
+                    # second pinning pass catches threads that escaped the
+                    # initial pin + SetProcessDefaultCpuSetMasks.
+                    if not numa_repinned and platform.system() == "Windows":
+                        try:
+                            _set_windows_process_numa(
+                                process._handle, process.pid, numa_node,  # type: ignore[union-attr, arg-type]
+                            )
+                        except (AttributeError, OSError):
+                            pass
+                        numa_repinned = True
                 elif "frame=" in line and len(stderr_lines) <= 5:
                     # Log unparsed progress lines for diagnostics
                     _log.debug("Unparsed progress line: %s", line[:300])
