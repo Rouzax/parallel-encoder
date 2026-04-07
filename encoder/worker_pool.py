@@ -567,6 +567,16 @@ class ParallelEncoder:
         start_callback: Callable[[str], None] | None = None,
     ) -> EncodingResult:
         """Execute a single encoding job (runs inside a worker thread)."""
+        if self._cancel_event.is_set():
+            return EncodingResult(
+                source_path=job.source_path,
+                output_path=job.output_path,
+                success=False,
+                exit_code=-1,
+                encoding_time=0.0,
+                error_message="Encoding cancelled.",
+            )
+
         cover_art_temp_dir: str | None = None
         try:
             # Extract cover art to temp files and build -attach args
