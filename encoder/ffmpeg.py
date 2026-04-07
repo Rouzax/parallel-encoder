@@ -362,12 +362,6 @@ def _set_windows_process_numa(process_handle: int, process_id: int, numa_node: i
     pinned = _pin_threads_to_group(
         kernel32, process_id, target_group, target_mask, GROUP_AFFINITY,
     )
-    if pinned:
-        _log.info(
-            "Pinned %d thread(s) of PID %d to NUMA node %d via "
-            "SetThreadGroupAffinity (group=%d, mask=0x%x)",
-            pinned, process_id, numa_node, target_group, target_mask,
-        )
 
     # -- SetProcessDefaultCpuSetMasks for future threads ------------------
     # Ensures threads created after our enumeration also land on the
@@ -388,6 +382,18 @@ def _set_windows_process_numa(process_handle: int, process_id: int, numa_node: i
             )
     except (AttributeError, OSError):
         pass  # Not available on this Windows version
+
+    # Second pass: catch any threads created between our first enumeration
+    # and SetProcessDefaultCpuSetMasks taking effect.
+    pinned += _pin_threads_to_group(
+        kernel32, process_id, target_group, target_mask, GROUP_AFFINITY,
+    )
+
+    _log.info(
+        "Pinned %d thread(s) of PID %d to NUMA node %d via "
+        "SetThreadGroupAffinity (group=%d, mask=0x%x)",
+        pinned, process_id, numa_node, target_group, target_mask,
+    )
 
     return pinned > 0
 
