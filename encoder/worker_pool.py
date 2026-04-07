@@ -330,6 +330,9 @@ class ParallelEncoder:
         self._worker_numa: dict[int, int] = {}
         self._worker_numa_lock = threading.Lock()
         self._numa_counter = itertools.count()
+        # Track active FFmpeg subprocesses so they can be killed on Ctrl+C.
+        self._active_processes: list[subprocess.Popen] = []  # type: ignore[type-arg]
+        self._active_processes_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Job preparation
@@ -487,6 +490,15 @@ class ParallelEncoder:
 
         except KeyboardInterrupt:
             self._cancel_event.set()
+            # Kill all active FFmpeg processes immediately so worker
+            # threads unblock from readline() without needing extra
+            # Ctrl+C presses.
+            with self._active_processes_lock:
+                for proc in self._active_processes:
+                    try:
+                        proc.kill()
+                    except OSError:
+                        pass
             for future in futures:
                 future.cancel()
             # Collect results from futures that already completed.
@@ -594,12 +606,25 @@ class ParallelEncoder:
                     return _cb
                 per_file_cb = _make_cb()
 
+            def _on_process_started(proc: subprocess.Popen) -> None:  # type: ignore[type-arg]
+                with self._active_processes_lock:
+                    self._active_processes.append(proc)
+
+            def _on_process_ended(proc: subprocess.Popen) -> None:  # type: ignore[type-arg]
+                with self._active_processes_lock:
+                    try:
+                        self._active_processes.remove(proc)
+                    except ValueError:
+                        pass
+
             result = run_encode(
                 command,
                 progress_callback=per_file_cb,
                 cancel_event=self._cancel_event,
                 numa_node=numa_node,
                 threads_per_numa=self.config.topology.threads_per_numa,
+                process_started=_on_process_started,
+                process_ended=_on_process_ended,
             )
 
             return result

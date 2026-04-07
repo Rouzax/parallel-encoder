@@ -529,6 +529,8 @@ def run_encode(
     cancel_event: threading.Event | None = None,
     numa_node: int | None = None,
     threads_per_numa: int | None = None,
+    process_started: Callable[[subprocess.Popen], None] | None = None,  # type: ignore[type-arg]
+    process_ended: Callable[[subprocess.Popen], None] | None = None,  # type: ignore[type-arg]
 ) -> EncodingResult:
     """Launch an FFmpeg encode subprocess and monitor its output.
 
@@ -578,6 +580,9 @@ def run_encode(
                 _set_windows_process_numa(process._handle, process.pid, numa_node)  # type: ignore[union-attr]
             except (AttributeError, OSError) as exc:
                 _log.warning("Windows NUMA pinning failed: %s", exc)
+
+        if process_started is not None:
+            process_started(process)
 
         _log.debug("FFmpeg command: %s", " ".join(command))
 
@@ -664,7 +669,6 @@ def run_encode(
     except KeyboardInterrupt:
         encoding_time = time.monotonic() - start_time
         if process is not None:
-            # Kill immediately to prevent stderr bleed during shutdown
             process.kill()
             process.wait()
         cleanup_temp(temp)
@@ -676,3 +680,7 @@ def run_encode(
             encoding_time=encoding_time,
             error_message="Encoding interrupted by user.",
         )
+
+    finally:
+        if process_ended is not None and process is not None:
+            process_ended(process)
