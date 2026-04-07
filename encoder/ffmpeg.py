@@ -285,6 +285,35 @@ def _parse_progress_line(line: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
+def _try_set_cpu_set_masks(kernel32, handle, affinity, process_id: int, numa_node: int) -> None:  # type: ignore[no-untyped-def]
+    """Best-effort SetProcessDefaultCpuSetMasks call (Server 2022+ / Win11+).
+
+    Constrains all future threads of the process to the given NUMA node,
+    preventing codecs with internal NUMA-aware thread creation (e.g.
+    SVT-AV1) from spawning threads in other processor groups.
+    """
+    import ctypes
+    import ctypes.wintypes
+
+    try:
+        GROUP_AFFINITY = type(affinity)
+        kernel32.SetProcessDefaultCpuSetMasks.argtypes = [
+            ctypes.wintypes.HANDLE,
+            ctypes.POINTER(GROUP_AFFINITY),
+            ctypes.c_ushort,
+        ]
+        kernel32.SetProcessDefaultCpuSetMasks.restype = ctypes.wintypes.BOOL
+        if kernel32.SetProcessDefaultCpuSetMasks(
+            handle, ctypes.byref(affinity), ctypes.c_ushort(1),
+        ):
+            _log.debug(
+                "SetProcessDefaultCpuSetMasks OK for PID %d, NUMA node %d",
+                process_id, numa_node,
+            )
+    except (AttributeError, OSError):
+        pass  # Not available on this Windows version
+
+
 def _set_windows_process_numa(process_handle: int, process_id: int, numa_node: int) -> bool:
     """Pin a Windows process to a NUMA node.
 
@@ -336,6 +365,13 @@ def _set_windows_process_numa(process_handle: int, process_id: int, numa_node: i
     # detect cross-group situations and use per-thread pinning instead.
     process_group = _get_process_group(kernel32, handle)
 
+    # -- SetProcessDefaultCpuSetMasks for future threads --------------------
+    # Called for ALL NUMA nodes (same-group and cross-group) to prevent
+    # codecs like SVT-AV1 from creating threads in other processor groups
+    # via their own internal NUMA-aware thread management.
+    # Server 2022+ / Windows 11+ only.
+    _try_set_cpu_set_masks(kernel32, handle, affinity, process_id, numa_node)
+
     if target_group == process_group:
         # -- Same group: SetProcessAffinityMask (all existing threads) ----
         kernel32.SetProcessAffinityMask.argtypes = [
@@ -346,7 +382,8 @@ def _set_windows_process_numa(process_handle: int, process_id: int, numa_node: i
         if kernel32.SetProcessAffinityMask(handle, target_mask):
             _log.info(
                 "Pinned process (PID %d) to NUMA node %d via "
-                "SetProcessAffinityMask (group=%d, mask=0x%x)",
+                "SetProcessAffinityMask + SetProcessDefaultCpuSetMasks "
+                "(group=%d, mask=0x%x)",
                 process_id, numa_node, target_group, target_mask,
             )
             return True
@@ -362,26 +399,6 @@ def _set_windows_process_numa(process_handle: int, process_id: int, numa_node: i
     pinned = _pin_threads_to_group(
         kernel32, process_id, target_group, target_mask, GROUP_AFFINITY,
     )
-
-    # -- SetProcessDefaultCpuSetMasks for future threads ------------------
-    # Ensures threads created after our enumeration also land on the
-    # correct NUMA node.  Server 2022+ / Windows 11+ only.
-    try:
-        kernel32.SetProcessDefaultCpuSetMasks.argtypes = [
-            ctypes.wintypes.HANDLE,
-            ctypes.POINTER(GROUP_AFFINITY),
-            ctypes.c_ushort,
-        ]
-        kernel32.SetProcessDefaultCpuSetMasks.restype = ctypes.wintypes.BOOL
-        if kernel32.SetProcessDefaultCpuSetMasks(
-            handle, ctypes.byref(affinity), ctypes.c_ushort(1),
-        ):
-            _log.debug(
-                "SetProcessDefaultCpuSetMasks OK for PID %d, NUMA node %d",
-                process_id, numa_node,
-            )
-    except (AttributeError, OSError):
-        pass  # Not available on this Windows version
 
     # Second pass: catch any threads created between our first enumeration
     # and SetProcessDefaultCpuSetMasks taking effect.

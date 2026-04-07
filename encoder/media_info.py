@@ -130,8 +130,9 @@ def probe_file(path: str | Path) -> dict:
     file_size: int = int(file_size_raw) if file_size_raw is not None else 0
 
     _log.debug(
-        "Probed %s: codec=%s, %sx%s, bitrate=%s, duration=%.1fs",
-        path.name, video_codec, video_width, video_height, total_bitrate, duration,
+        "Probed %s: codec=%s, %sx%s, %.1ffps, bitrate=%s, duration=%.1fs",
+        path.name, video_codec, video_width, video_height,
+        video_fps or 0.0, total_bitrate, duration,
     )
 
     return {
