@@ -8,3 +8,4 @@ build/
 .claude/
 *.ps1
 docs/plans/
+CLAUDE.md
