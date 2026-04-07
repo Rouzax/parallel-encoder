@@ -288,4 +288,11 @@ def preset_to_ffmpeg_args(
     if container in ("mkv", "matroska", "webm"):
         args.extend(["-c:t", "copy"])
 
+    # ── WebM seeking optimisation ─────────────────────────────
+    # -dash 1 writes Cue points at the front of the file and creates
+    # one entry per cluster for both video and audio, enabling instant
+    # audio resumption when seeking in players like Jellyfin.
+    if container == "webm":
+        args.extend(["-dash", "1"])
+
     return args
