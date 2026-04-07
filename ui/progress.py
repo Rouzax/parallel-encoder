@@ -246,18 +246,24 @@ def print_summary_table(
             target_by_path[tf["path"]] = tf
             target_by_stem[tf["filename"]] = tf  # fallback for non-unique stems
 
+    # Exclude cancelled jobs from the summary table.
+    cancelled_msgs = {"Encoding cancelled.", "Encoding interrupted by user."}
+    active_results = [r for r in results if r.error_message not in cancelled_msgs]
+
     result_by_source: dict[str, EncodingResult] = {}
-    for r in results:
+    for r in active_results:
         result_by_source[r.source_path] = r
 
-    # One row per source file. -------------------------------------------
+    # One row per source file (skip cancelled). --------------------------
     for sf in source_files:
+        result = result_by_source.get(sf["path"])
+        if result is None:
+            continue  # cancelled or never started
+
         filename: str = sf["filename"]
         source_codec: str = sf.get("video_codec") or "N/A"
         source_bitrate: str = format_bitrate(sf.get("video_bitrate") or sf.get("total_bitrate"))
         source_size: str = format_size(sf.get("file_size", 0))
-
-        result = result_by_source.get(sf["path"])
 
         # Target info (only when target probe data is available). --------
         target_codec: str = "N/A"

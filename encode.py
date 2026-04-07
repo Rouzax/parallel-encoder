@@ -705,14 +705,20 @@ def main(
     target_files = probe_folder(output, extensions=video_extensions)
     print_summary_table(source_files, results, target_files)
 
-    failed = [r for r in results if not r.success]
+    cancelled_msgs = {"Encoding cancelled.", "Encoding interrupted by user."}
+    cancelled = [r for r in results if r.error_message in cancelled_msgs]
+    failed = [r for r in results if not r.success and r.error_message not in cancelled_msgs]
+
     if failed:
         console.print(f"\n[red]{len(failed)} file(s) failed to encode:[/red]")
         for r in failed:
             console.print(f"  [red]-[/red] {Path(r.source_path).name}: {r.error_message or 'unknown error'}")
 
     successful = sum(1 for r in results if r.success)
-    parts = [f"{successful}/{len(results)} file(s) encoded successfully"]
+    total_attempted = len(results) - len(cancelled)
+    parts = [f"{successful}/{total_attempted} file(s) encoded successfully"]
+    if cancelled:
+        parts.append(f"{len(cancelled)} cancelled")
     if skipped_paths:
         parts.append(f"{len(skipped_paths)} skipped")
     console.print(f"\n[bold green]Done![/bold green] {', '.join(parts)}.")
