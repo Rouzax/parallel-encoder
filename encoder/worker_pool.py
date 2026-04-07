@@ -464,7 +464,22 @@ class ParallelEncoder:
         results: list[EncodingResult] = []
         futures: dict[Future[EncodingResult], EncodingJob] = {}
 
+        import signal
+        original_handler = signal.getsignal(signal.SIGINT)
+
+        def _sigint_handler(signum: int, frame: object) -> None:
+            """Handle Ctrl+C immediately rather than waiting for KeyboardInterrupt."""
+            self._cancel_event.set()
+            with self._active_processes_lock:
+                for proc in self._active_processes:
+                    try:
+                        proc.kill()
+                    except OSError:
+                        pass
+            _log.info("Received interrupt, stopping all encodes...")
+
         try:
+            signal.signal(signal.SIGINT, _sigint_handler)
             with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
                 for job in jobs:
                     future = executor.submit(self._run_single, job, progress_callback, start_callback)
@@ -489,25 +504,22 @@ class ParallelEncoder:
                         completion_callback(result)
 
         except KeyboardInterrupt:
+            # Signal handler already set cancel_event and killed processes,
+            # but handle the case where KeyboardInterrupt arrives first.
             self._cancel_event.set()
-            # Kill all active FFmpeg processes immediately so worker
-            # threads unblock from readline() without needing extra
-            # Ctrl+C presses.
-            with self._active_processes_lock:
-                for proc in self._active_processes:
-                    try:
-                        proc.kill()
-                    except OSError:
-                        pass
             for future in futures:
                 future.cancel()
-            # Collect results from futures that already completed.
-            for future in futures:
-                if future.done() and not future.cancelled():
-                    try:
-                        results.append(future.result())
-                    except Exception:
-                        pass
+
+        finally:
+            signal.signal(signal.SIGINT, original_handler)
+
+        # Wait briefly for workers to finish, then collect results.
+        for future in futures:
+            if future.done() and not future.cancelled():
+                try:
+                    results.append(future.result())
+                except Exception:
+                    pass
 
         return results
 
