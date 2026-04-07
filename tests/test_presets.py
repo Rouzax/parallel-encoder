@@ -257,6 +257,43 @@ def test_preset_to_ffmpeg_args_mkv_passthrough_aac():
     assert args[args.index("-c:a") + 1] == "copy"
 
 
+def test_preset_to_ffmpeg_args_max_fps_caps_high_framerate():
+    """max_fps should add fps filter when source exceeds the cap."""
+    preset = {
+        "container": "webm",
+        "video": {"codec": "libsvtav1", "crf": 35, "preset": 6, "max_fps": 30},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1280, "video_height": 720,
+        "video_fps": 60.0,
+        "audio_streams": [{"codec": "opus", "language": "eng", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    vf_idx = args.index("-vf")
+    assert "fps=30" in args[vf_idx + 1]
+
+
+def test_preset_to_ffmpeg_args_max_fps_no_cap_when_below():
+    """max_fps should not add fps filter when source is at or below the cap."""
+    preset = {
+        "container": "webm",
+        "video": {"codec": "libsvtav1", "crf": 35, "preset": 6, "max_fps": 30},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1280, "video_height": 720,
+        "video_fps": 24.0,
+        "audio_streams": [{"codec": "opus", "language": "eng", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    # No -vf flag at all since no scaling or fps cap needed
+    full_cmd = " ".join(args)
+    assert "fps=" not in full_cmd
+
+
 def test_preset_to_ffmpeg_args_webm_ignores_cover_art():
     """WebM can't hold non-VP9/AV1 video — should always map first video only and use -vf."""
     preset = {

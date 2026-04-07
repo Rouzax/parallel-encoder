@@ -233,6 +233,12 @@ def preset_to_ffmpeg_args(
                 f"scale={max_w}:{max_h}:force_original_aspect_ratio=decrease"
             )
 
+    max_fps: int | None = video.get("max_fps")
+    if max_fps is not None:
+        source_fps: float | None = source_info.get("video_fps")
+        if source_fps is not None and source_fps > max_fps:
+            vf_filters.append(f"fps={max_fps}")
+
     colorspace: str | None = video.get("colorspace")
     if colorspace == "bt709":
         source_primaries = source_info.get("video_colour_primaries")

@@ -83,6 +83,7 @@ def probe_file(path: str | Path) -> dict:
     video_height: int | None = None
     video_bitrate: int | None = None
     video_colour_primaries: str | None = None
+    video_fps: float | None = None
 
     if video is not None:
         video_codec = video.get("codec_name")
@@ -91,6 +92,14 @@ def probe_file(path: str | Path) -> dict:
         raw_br: str | None = video.get("bit_rate")
         video_bitrate = int(raw_br) if raw_br is not None else None
         video_colour_primaries = video.get("color_primaries")
+        # Parse frame rate from "num/den" fraction (e.g. "30000/1001")
+        raw_fps: str | None = video.get("r_frame_rate")
+        if raw_fps and "/" in raw_fps:
+            num, den = raw_fps.split("/", 1)
+            try:
+                video_fps = float(num) / float(den) if float(den) != 0 else None
+            except (ValueError, ZeroDivisionError):
+                pass
 
     # --- audio streams ---
     audio_streams: list[dict] = []
@@ -135,6 +144,7 @@ def probe_file(path: str | Path) -> dict:
         "video_height": video_height,
         "video_bitrate": video_bitrate,
         "video_colour_primaries": video_colour_primaries,
+        "video_fps": video_fps,
         "total_bitrate": total_bitrate,
         "audio_streams": audio_streams,
         "cover_art_count": cover_art_count,

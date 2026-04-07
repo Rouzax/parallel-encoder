@@ -193,6 +193,7 @@ presets:
       preset: 8
       max_width: 1280
       max_height: 720
+      max_fps: 30
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
@@ -208,6 +209,7 @@ presets:
       preset: 8
       max_width: 1280
       max_height: 720
+      max_fps: 30
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
@@ -223,6 +225,7 @@ presets:
       preset: 8
       max_width: 1280
       max_height: 720
+      max_fps: 30
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
@@ -241,6 +244,7 @@ presets:
       preset: 6
       max_width: 1280
       max_height: 720
+      max_fps: 30
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
@@ -256,6 +260,7 @@ presets:
       preset: 6
       max_width: 1280
       max_height: 720
+      max_fps: 30
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
@@ -271,6 +276,7 @@ presets:
       preset: 6
       max_width: 1280
       max_height: 720
+      max_fps: 30
       pix_fmt: yuv420p
       colorspace: bt709
     audio:
