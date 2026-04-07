@@ -98,11 +98,13 @@ def probe_file(path: str | Path) -> dict:
         if s.get("codec_type") != "audio":
             continue
         tags: dict = s.get("tags", {})
+        raw_abr: str | None = s.get("bit_rate")
         audio_streams.append(
             {
                 "codec": s.get("codec_name", "und"),
                 "language": tags.get("language", "und"),
                 "channels": str(s.get("channels", "und")),
+                "bit_rate": int(raw_abr) if raw_abr is not None else None,
             }
         )
 

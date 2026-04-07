@@ -207,7 +207,7 @@ def test_preset_to_ffmpeg_args_webm_auto_transcodes_aac_to_opus():
 
 
 def test_preset_to_ffmpeg_args_webm_passthrough_opus():
-    """WebM with Opus source audio should passthrough."""
+    """WebM always transcodes audio to Opus (even when source is Opus) for proper seeking."""
     preset = {
         "container": "webm",
         "video": {"codec": "libvpx-vp9", "crf": 30, "speed": 4},
@@ -220,7 +220,24 @@ def test_preset_to_ffmpeg_args_webm_passthrough_opus():
     }
     args = preset_to_ffmpeg_args(preset, source_info)
     assert "-c:a" in args
-    assert args[args.index("-c:a") + 1] == "copy"
+    assert args[args.index("-c:a") + 1] == "libopus"
+    assert "-b:a" in args
+
+
+def test_preset_to_ffmpeg_args_webm_opus_uses_source_bitrate():
+    """WebM Opus transcode should use source bitrate when available."""
+    preset = {
+        "container": "webm",
+        "video": {"codec": "libvpx-vp9", "crf": 30, "speed": 4},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [{"codec": "opus", "language": "eng", "channels": "2", "bit_rate": 256000}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    assert args[args.index("-b:a") + 1] == "256k"
 
 
 def test_preset_to_ffmpeg_args_mkv_passthrough_aac():

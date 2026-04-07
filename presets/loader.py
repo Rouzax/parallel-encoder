@@ -11,12 +11,45 @@ from typing import Any
 
 _log = logging.getLogger("parallel-encoder")
 
-_WEBM_AUDIO_CODECS = {"opus", "vorbis"}
-
 import yaml
+
+# Default Opus bitrates per channel count when source bitrate is unknown.
+_OPUS_BITRATE_BY_CHANNELS: dict[int, str] = {
+    1: "96k",
+    2: "160k",
+    6: "256k",   # 5.1
+    8: "384k",   # 7.1
+}
+_OPUS_BITRATE_DEFAULT = "160k"
 
 _REQUIRED_VIDEO_KEYS = {"codec", "crf"}
 _VALID_AUDIO_MODES = {"passthrough", "transcode"}
+
+
+def _pick_opus_bitrate(audio_streams: list[dict]) -> str:
+    """Choose an Opus bitrate based on the source audio streams.
+
+    Uses the source bitrate if available (from ffprobe), otherwise
+    falls back to a sensible default based on channel count.
+    """
+    if not audio_streams:
+        return _OPUS_BITRATE_DEFAULT
+
+    # Use the first audio stream's properties
+    stream = audio_streams[0]
+    source_bps: int | None = stream.get("bit_rate")
+
+    if source_bps is not None and source_bps > 0:
+        # Round to nearest 1k for a clean value
+        kbps = max(64, round(source_bps / 1000))
+        return f"{kbps}k"
+
+    # Fallback: pick by channel count
+    try:
+        channels = int(stream.get("channels", 2))
+    except (ValueError, TypeError):
+        channels = 2
+    return _OPUS_BITRATE_BY_CHANNELS.get(channels, _OPUS_BITRATE_DEFAULT)
 
 
 def validate_preset(key: str, preset: dict) -> None:
@@ -225,13 +258,15 @@ def preset_to_ffmpeg_args(
 
     # ── Audio codec ─────────────────────────────────────────────
     if audio["mode"] == "passthrough":
-        # WebM only supports Opus/Vorbis — auto-transcode if source audio is incompatible
-        source_audio_codecs = {
-            s.get("codec", "").lower() for s in source_info.get("audio_streams", [])
-        }
-        if container == "webm" and source_audio_codecs and not source_audio_codecs.issubset(_WEBM_AUDIO_CODECS):
-            _log.info("Auto-transcoding audio to Opus (source has %s, WebM requires Opus/Vorbis)", source_audio_codecs)
-            args.extend(["-c:a", "libopus", "-b:a", "160k"])
+        if container == "webm":
+            # WebM requires Opus/Vorbis.  Always transcode to Opus rather
+            # than stream-copying, even when the source is already Opus.
+            # Stream-copied Opus in WebM causes ~5s audio delay on seeking
+            # because FFmpeg doesn't rewrite packet headers for the new
+            # container's cluster boundaries.
+            bitrate = _pick_opus_bitrate(source_info.get("audio_streams", []))
+            _log.info("Transcoding audio to Opus @ %s for WebM", bitrate)
+            args.extend(["-c:a", "libopus", "-b:a", bitrate])
         else:
             args.extend(["-c:a", "copy"])
     else:
