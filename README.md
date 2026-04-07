@@ -27,6 +27,12 @@ pip install -e .
 
 This installs the `parallel-encode` CLI entry point.
 
+Or install directly from GitHub:
+
+```bash
+pip install git+https://github.com/Rouzax/parallel-encoder.git
+```
+
 ## Usage
 
 ```bash
