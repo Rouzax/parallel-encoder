@@ -78,90 +78,6 @@ def finalize_output(temp_path: str, final_path: str) -> None:
     os.replace(temp_path, final_path)
 
 
-def finalize_webm_with_remux(
-    temp_path: str,
-    final_path: str,
-    ffmpeg_path: str,
-) -> None:
-    """Remux a WebM temp file to its final location with cues at the front.
-
-    This is a workaround for newer libsvtav1 + FFmpeg combinations that
-    write clusters in non-monotonic order during direct encoding (the
-    encoder's lookahead releases video frames in batches with backdated
-    PTS, and the matroska muxer flushes them as out-of-order clusters).
-
-    The matroska demuxer reads packets from a file in PTS order using
-    the cue index, regardless of cluster file order. So a stream-copy
-    remux pass takes the (potentially out-of-order) temp file as input
-    and writes a properly ordered file as output. The remux is very
-    fast (~500x realtime, just packet copy).
-
-    On any remux failure, falls back to a plain atomic rename so the
-    user still gets the encoded file even if the remux can't run.
-    """
-    final = Path(final_path)
-    remux_tmp = str(final.with_suffix(f".remux{final.suffix}"))
-
-    # Reserve enough space for cues at the front of the file. Cue density
-    # is roughly 1 per video keyframe (~0.5/sec at keyint=2s); we use
-    # ~20 bytes per second as a conservative upper bound, with a 256 KiB
-    # minimum that handles files up to ~1h.
-    duration = _probe_duration(temp_path)
-    needed = int((duration or 0) * 20 * 2)
-    reserve = max(262144, ((needed + 65535) // 65536) * 65536)
-
-    cmd = [
-        ffmpeg_path, "-y", "-hide_banner", "-loglevel", "warning",
-        "-i", temp_path,
-        "-map", "0",
-        "-c", "copy",
-        "-cues_to_front", "1",
-        "-reserve_index_space", str(reserve),
-        remux_tmp,
-    ]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if result.returncode != 0:
-            _log.warning(
-                "WebM remux failed for %s (exit %d), falling back to rename: %s",
-                final_path, result.returncode, result.stderr.strip()[-200:],
-            )
-            cleanup_temp(remux_tmp)
-            os.replace(temp_path, final_path)
-            return
-        # Remux succeeded, replace final and clean up encode temp.
-        os.replace(remux_tmp, final_path)
-        cleanup_temp(temp_path)
-        _log.debug("WebM remux completed: %s", final_path)
-    except (OSError, subprocess.SubprocessError) as exc:
-        _log.warning(
-            "WebM remux exception for %s, falling back to rename: %s",
-            final_path, exc,
-        )
-        cleanup_temp(remux_tmp)
-        try:
-            os.replace(temp_path, final_path)
-        except OSError:
-            pass
-
-
-def _probe_duration(path: str) -> float | None:
-    """Return duration in seconds via ffprobe, or None on failure."""
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                path,
-            ],
-            capture_output=True, text=True, timeout=10,
-        )
-        return float(result.stdout.strip())
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return None
-
-
 def cleanup_temp(temp_path: str) -> None:
     """Remove a temp file if it exists (best-effort)."""
     try:
@@ -738,12 +654,7 @@ def run_encode(
         error_message: str | None = None
 
         if success:
-            # WebM encodes get a remux pass to fix non-monotonic cluster
-            # order from libsvtav1 lookahead. See finalize_webm_with_remux.
-            if output.lower().endswith(".webm"):
-                finalize_webm_with_remux(temp, output, command[0])
-            else:
-                finalize_output(temp, output)
+            finalize_output(temp, output)
             _log.debug("FFmpeg completed: exit=%d time=%.1fs source=%s", process.returncode, encoding_time, source)
             _log.debug("FFmpeg stderr for %s:\n%s", source, "\n".join(stderr_lines[-50:]))
         else:
