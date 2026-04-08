@@ -297,28 +297,44 @@ def preset_to_ffmpeg_args(
         args.extend(["-c:t", "copy"])
 
     # ── WebM seeking optimisation ─────────────────────────────
-    # In normal multi-track WebM, FFmpeg only writes Cue points for
-    # video keyframes, never for audio. When seeking, the demuxer
-    # lands on a video cue then linear-scans audio clusters to find
-    # the right sample. With default 5s clusters this lags audio by
-    # up to 5s in players like Jellyfin.
+    # In multi-track WebM, FFmpeg only writes Cue points for video
+    # keyframes, never for audio. When seeking, the demuxer lands on
+    # a video cue then linear-scans audio within the cluster.
     #
     # Fix:
-    #   -cluster_time_limit 1000   1s clusters reduce the audio scan
-    #                              window to ~1s after seek landing
     #   -cues_to_front 1           place the Cues element at the start
     #                              of the file for fast HTTP seek
-    #   -reserve_index_space 65536 reserve space so cues_to_front does
-    #                              not require shifting the file
+    #   -reserve_index_space N     reserve space so cues_to_front does
+    #                              not require shifting the file. Size
+    #                              scales with duration.
     #
-    # NOTE: -dash 1 is NOT used here. It hard-requires single-track
+    # We rely on the encoder's keyint to control cluster size (since
+    # the matroska muxer creates a new cluster on each video keyframe).
+    # WebM AV1 presets set keyint=2 -> 2s clusters -> ~2s audio scan
+    # window after seek.
+    #
+    # NOTE: We do NOT use -cluster_time_limit. SVT-AV1 with high
+    # parallelism (lp=6) buffers many frames of video lookahead. If
+    # the muxer flushes clusters on a fixed time interval shorter
+    # than the encoder's lookahead, audio packets stream out before
+    # video catches up, producing clusters with no video and later
+    # clusters with backdated video timestamps. The result is an
+    # out-of-order WebM that breaks audio seeking in every player.
+    #
+    # NOTE: -dash 1 is NOT used either. It hard-requires single-track
     # output (nb_tracks == 1) and would fail every multi-track encode
     # with EINVAL.
     if container == "webm":
+        duration: float = source_info.get("duration", 0.0) or 0.0
+        # ~1 cue per video keyframe, ~20 bytes per cue, 100% safety.
+        # At keyint=2s the cue density is ~0.5 cues/sec; we use 1/sec
+        # as a conservative upper bound that also covers shorter keyint.
+        needed = int(duration * 20 * 2)
+        # Round up to nearest 64 KiB, minimum 256 KiB.
+        reserve = max(262144, ((needed + 65535) // 65536) * 65536)
         args.extend([
-            "-cluster_time_limit", "1000",
             "-cues_to_front", "1",
-            "-reserve_index_space", "65536",
+            "-reserve_index_space", str(reserve),
         ])
 
     return args
