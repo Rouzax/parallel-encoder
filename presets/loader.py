@@ -220,13 +220,33 @@ def preset_to_ffmpeg_args(
     if video.get("profile"):
         args.extend(["-profile:v", video["profile"]])
 
-    # Keyframe interval (in seconds).  For SVT-AV1 this is added to
-    # svtav1-params; build_command merges with the lp= entry.
-    # Tightening keyint reduces seek granularity and the audio scan
-    # window after seek landing in WebM.
-    keyint: int | None = video.get("keyint")
-    if keyint is not None and codec == "libsvtav1":
-        args.extend(["-svtav1-params", f"keyint={keyint}s"])
+    # Build SVT-AV1 params as a single colon-separated string. FFmpeg
+    # only honors the last -svtav1-params flag, so we MUST collect all
+    # entries here and emit one flag. build_command will then append
+    # lp=N to this single value.
+    if codec == "libsvtav1":
+        svt_params: list[str] = []
+
+        # Keyframe interval (seconds). Tightening keyint reduces seek
+        # granularity and the audio scan window after seek landing in
+        # WebM.
+        keyint: int | None = video.get("keyint")
+        if keyint is not None:
+            svt_params.append(f"keyint={keyint}s")
+
+        # Cap SVT-AV1 hierarchical levels for WebM output. SVT-AV1
+        # >= 2.x defaults to hierarchical-levels=5, which produces a
+        # long mini-GOP with frames whose DTS goes backwards on each
+        # new keyframe. The matroska muxer cannot reorder these into
+        # monotonic clusters, producing out-of-order WebM clusters
+        # that break audio seeking in every player.
+        # See SVT-AV1 issue #2351 (open) and historical fix !972
+        # for #738. Capping at 3 keeps the bug from manifesting.
+        if container == "webm":
+            svt_params.append("hierarchical-levels=3")
+
+        if svt_params:
+            args.extend(["-svtav1-params", ":".join(svt_params)])
 
     # ── Video filters (scale + colorspace, combined into one -vf) ──
     vf_filters: list[str] = []
