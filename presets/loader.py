@@ -289,10 +289,28 @@ def preset_to_ffmpeg_args(
         args.extend(["-c:t", "copy"])
 
     # ── WebM seeking optimisation ─────────────────────────────
-    # -dash 1 writes Cue points at the front of the file and creates
-    # one entry per cluster for both video and audio, enabling instant
-    # audio resumption when seeking in players like Jellyfin.
+    # In normal multi-track WebM, FFmpeg only writes Cue points for
+    # video keyframes, never for audio. When seeking, the demuxer
+    # lands on a video cue then linear-scans audio clusters to find
+    # the right sample. With default 5s clusters this lags audio by
+    # up to 5s in players like Jellyfin.
+    #
+    # Fix:
+    #   -cluster_time_limit 1000   1s clusters reduce the audio scan
+    #                              window to ~1s after seek landing
+    #   -cues_to_front 1           place the Cues element at the start
+    #                              of the file for fast HTTP seek
+    #   -reserve_index_space 65536 reserve space so cues_to_front does
+    #                              not require shifting the file
+    #
+    # NOTE: -dash 1 is NOT used here. It hard-requires single-track
+    # output (nb_tracks == 1) and would fail every multi-track encode
+    # with EINVAL.
     if container == "webm":
-        args.extend(["-dash", "1"])
+        args.extend([
+            "-cluster_time_limit", "1000",
+            "-cues_to_front", "1",
+            "-reserve_index_space", "65536",
+        ])
 
     return args
