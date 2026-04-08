@@ -220,6 +220,14 @@ def preset_to_ffmpeg_args(
     if video.get("profile"):
         args.extend(["-profile:v", video["profile"]])
 
+    # Keyframe interval (in seconds).  For SVT-AV1 this is added to
+    # svtav1-params; build_command merges with the lp= entry.
+    # Tightening keyint reduces seek granularity and the audio scan
+    # window after seek landing in WebM.
+    keyint: int | None = video.get("keyint")
+    if keyint is not None and codec == "libsvtav1":
+        args.extend(["-svtav1-params", f"keyint={keyint}s"])
+
     # ── Video filters (scale + colorspace, combined into one -vf) ──
     vf_filters: list[str] = []
 
