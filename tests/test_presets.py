@@ -294,6 +294,54 @@ def test_preset_to_ffmpeg_args_max_fps_no_cap_when_below():
     assert "fps=" not in full_cmd
 
 
+def test_preset_to_ffmpeg_args_webm_strips_mkvmerge_stats_tags():
+    """WebM/MKV output must clear stale per-stream stats tags from source.
+
+    mkvmerge writes per-track BPS, NUMBER_OF_FRAMES, etc. that describe
+    the source stream. FFmpeg copies them through, causing MediaInfo to
+    report nonsense bitrates after re-encoding. We clear them.
+    """
+    preset = {
+        "container": "webm",
+        "video": {"codec": "libsvtav1", "crf": 35, "preset": 6},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1280, "video_height": 720,
+        "audio_streams": [{"codec": "opus", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    full_cmd = " ".join(args)
+
+    # All seven stale tag keys must appear cleared on each stream type
+    for stream_spec in ("v", "a", "t"):
+        for tag in ("BPS", "DURATION", "NUMBER_OF_FRAMES", "NUMBER_OF_BYTES",
+                    "_STATISTICS_WRITING_APP", "_STATISTICS_WRITING_DATE_UTC",
+                    "_STATISTICS_TAGS"):
+            assert f"-metadata:s:{stream_spec} {tag}=" in full_cmd, (
+                f"missing clear for {tag} on stream {stream_spec}"
+            )
+
+
+def test_preset_to_ffmpeg_args_mp4_no_stats_tag_clearing():
+    """MP4 output should NOT clear stats tags (they don't exist for mp4)."""
+    preset = {
+        "container": "mp4",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [{"codec": "aac", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    full_cmd = " ".join(args)
+    assert "-metadata:s:v BPS=" not in full_cmd
+    assert "_STATISTICS_TAGS=" not in full_cmd
+
+
 def test_preset_to_ffmpeg_args_webm_ignores_cover_art():
     """WebM can't hold non-VP9/AV1 video — should always map first video only and use -vf."""
     preset = {

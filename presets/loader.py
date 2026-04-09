@@ -316,6 +316,27 @@ def preset_to_ffmpeg_args(
     if container in ("mkv", "matroska", "webm"):
         args.extend(["-c:t", "copy"])
 
+    # ── Strip stale per-stream stats tags ─────────────────────
+    # Source MKV files from mkvmerge have per-track BPS, DURATION,
+    # NUMBER_OF_FRAMES, NUMBER_OF_BYTES, and _STATISTICS_* tags that
+    # describe the source stream. FFmpeg copies these through to the
+    # output as-is, but they no longer match the re-encoded stream.
+    # MediaInfo trusts the BPS tag and reports nonsense bitrates
+    # (e.g. video stream size > total file size).
+    # Clearing them lets MediaInfo compute from actual stream data.
+    # Setting a metadata key to empty string removes it in FFmpeg.
+    if container in ("mkv", "matroska", "webm"):
+        stale_tags = [
+            "BPS", "DURATION",
+            "NUMBER_OF_FRAMES", "NUMBER_OF_BYTES",
+            "_STATISTICS_WRITING_APP",
+            "_STATISTICS_WRITING_DATE_UTC",
+            "_STATISTICS_TAGS",
+        ]
+        for stream_spec in ("v", "a", "t"):
+            for tag in stale_tags:
+                args.extend([f"-metadata:s:{stream_spec}", f"{tag}="])
+
     # ── WebM seeking optimisation ─────────────────────────────
     # In multi-track WebM, FFmpeg only writes Cue points for video
     # keyframes, never for audio. When seeking, the demuxer lands on
