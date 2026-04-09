@@ -463,6 +463,7 @@ class ParallelEncoder:
         """
         results: list[EncodingResult] = []
         futures: dict[Future[EncodingResult], EncodingJob] = {}
+        processed: set[Future[EncodingResult]] = set()
 
         import signal
         original_handler = signal.getsignal(signal.SIGINT)
@@ -486,6 +487,7 @@ class ParallelEncoder:
                     futures[future] = job
 
                 for future in as_completed(futures):
+                    processed.add(future)
                     try:
                         result = future.result()
                     except Exception as exc:
@@ -513,8 +515,13 @@ class ParallelEncoder:
         finally:
             signal.signal(signal.SIGINT, original_handler)
 
-        # Wait briefly for workers to finish, then collect results.
+        # Recover any results from futures that completed but were not yet
+        # iterated by the as_completed loop (e.g. when KeyboardInterrupt
+        # broke out of it early).  Skip futures the main loop already
+        # processed so we never double-count.
         for future in futures:
+            if future in processed:
+                continue
             if future.done() and not future.cancelled():
                 try:
                     results.append(future.result())

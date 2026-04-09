@@ -305,6 +305,47 @@ def test_keyboard_interrupt_signals_cancellation(flat_topology, worker_config):
     assert encoder._cancel_event.is_set()
 
 
+def test_run_does_not_duplicate_results(worker_config, tmp_path, monkeypatch):
+    """ParallelEncoder.run() must return one result per job, not two.
+
+    Regression test for a bug where a post-loop cleanup re-appended every
+    completed future, doubling the results list and causing the final
+    "Done! N/N" message to report 2x the true count.
+    """
+    from encoder.worker_pool import EncodingJob
+
+    encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
+
+    jobs = [
+        EncodingJob(
+            source_path=str(tmp_path / f"src{i}.mkv"),
+            output_path=str(tmp_path / f"out{i}.mkv"),
+            preset_args=[],
+            threads=1,
+        )
+        for i in range(5)
+    ]
+
+    def fake_run_single(self, job, progress_callback=None, start_callback=None):
+        return EncodingResult(
+            source_path=job.source_path,
+            output_path=job.output_path,
+            success=True,
+            exit_code=0,
+            encoding_time=0.1,
+            error_message=None,
+        )
+
+    monkeypatch.setattr(ParallelEncoder, "_run_single", fake_run_single)
+
+    callback_calls: list[EncodingResult] = []
+    results = encoder.run(jobs=jobs, completion_callback=callback_calls.append)
+
+    assert len(results) == len(jobs), f"expected {len(jobs)} results, got {len(results)}"
+    assert len({r.source_path for r in results}) == len(jobs), "duplicate source paths in results"
+    assert len(callback_calls) == len(jobs), "completion_callback must fire once per job"
+
+
 # ---------------------------------------------------------------------------
 # auto_detect_workers tests
 # ---------------------------------------------------------------------------
