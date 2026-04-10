@@ -378,4 +378,12 @@ def preset_to_ffmpeg_args(
             "-reserve_index_space", str(reserve),
         ])
 
+    # ── MP4 fast start ────────────────────────────────────────
+    # Move the moov atom to the front of the file so playback can
+    # start without seeking to the end first.  This is critical for
+    # streaming over SMB/HTTP where backwards seeks are slow or
+    # unsupported, and is a no-cost improvement for local playback.
+    if container == "mp4":
+        args.extend(["-movflags", "+faststart"])
+
     return args
