@@ -419,6 +419,39 @@ presets:
     subtitles: none
 
   # ─────────────────────────────────────────────────────────────
+  # AV1 (SVT-AV1) — 4K presets (MP4 container, VR180 S24 playback)
+  # ─────────────────────────────────────────────────────────────
+  mp4-4k-av1-bt709-p6-crf22-all-audio:
+    display_name: "MP4 - 4k - SVT-AV1 - BT.709 - P6 CRF22 - All Audio Passthru"
+    container: mp4
+    video:
+      codec: libsvtav1
+      crf: 22
+      preset: 6
+      max_width: 3840
+      max_height: 1920
+      pix_fmt: yuv420p10le
+      colorspace: bt709
+    audio:
+      mode: passthrough
+    subtitles: none
+
+  mp4-4k-av1-bt709-p6-crf24-all-audio:
+    display_name: "MP4 - 4k - SVT-AV1 - BT.709 - P6 CRF24 - All Audio Passthru"
+    container: mp4
+    video:
+      codec: libsvtav1
+      crf: 24
+      preset: 6
+      max_width: 3840
+      max_height: 1920
+      pix_fmt: yuv420p10le
+      colorspace: bt709
+    audio:
+      mode: passthrough
+    subtitles: none
+
+  # ─────────────────────────────────────────────────────────────
   # H.264 — 720p BT.709 preset
   # ─────────────────────────────────────────────────────────────
   mkv-720p-h264-bt709-medium-rf25-english:
