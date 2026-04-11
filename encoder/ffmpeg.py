@@ -63,14 +63,30 @@ def find_ffprobe() -> str:
     return path
 
 
+_EXT_TO_MUXER: dict[str, str] = {
+    ".mkv": "matroska",
+    ".mp4": "mp4",
+    ".webm": "webm",
+    ".avi": "avi",
+    ".mov": "mov",
+    ".ts": "mpegts",
+}
+
+
+def _muxer_for_ext(ext: str) -> str | None:
+    """Return the FFmpeg muxer name for a file extension, or *None*."""
+    return _EXT_TO_MUXER.get(ext.lower())
+
+
 def atomic_output_path(output: str) -> str:
     """Return a temporary path next to the final output.
 
-    The temp file sits in the same directory so os.replace is atomic
-    (same filesystem).
+    Uses a ``.tmp`` extension so media servers (Plex, Jellyfin) won't
+    pick up partially-encoded files.  The temp file sits in the same
+    directory so :func:`os.replace` is atomic (same filesystem).
     """
     p = Path(output)
-    return str(p.with_suffix(f".tmp{p.suffix}"))
+    return str(p.with_suffix(".tmp"))
 
 
 def finalize_output(temp_path: str, final_path: str) -> None:
@@ -127,18 +143,25 @@ def extract_cover_art(
     return extracted
 
 
-def cover_art_attach_args(extracted: list[tuple[str, str, str]]) -> list[str]:
+def cover_art_attach_args(
+    extracted: list[tuple[str, str, str]],
+    existing_attachment_count: int = 0,
+) -> list[str]:
     """Build FFmpeg ``-attach`` arguments for extracted cover art files.
 
     Args:
         extracted: List of (temp_file_path, original_filename, mimetype) tuples
             as returned by :func:`extract_cover_art`.
+        existing_attachment_count: Number of attachment streams already mapped
+            from the source (via ``-map 0:t?``).  The new ``-attach`` streams
+            appear after these, so metadata indices must be offset accordingly.
     """
     args: list[str] = []
     for i, (temp_path, orig_name, mimetype) in enumerate(extracted):
+        idx = existing_attachment_count + i
         args.extend(["-attach", temp_path])
-        args.extend([f"-metadata:s:t:{i}", f"mimetype={mimetype}"])
-        args.extend([f"-metadata:s:t:{i}", f"filename={orig_name}"])
+        args.extend([f"-metadata:s:t:{idx}", f"mimetype={mimetype}"])
+        args.extend([f"-metadata:s:t:{idx}", f"filename={orig_name}"])
     return args
 
 
@@ -553,9 +576,15 @@ def run_encode(
     if command:
         output = command[-1]
 
-    # Write to temp file, rename on success
+    # Write to temp file (.tmp extension), rename on success.
+    # Since the temp file loses the real extension, tell FFmpeg which
+    # muxer to use via -f so it doesn't have to guess from the filename.
     temp = atomic_output_path(output)
     command = list(command)  # copy to avoid mutating caller
+    fmt = _muxer_for_ext(Path(output).suffix)
+    if fmt and "-f" not in command:
+        command.insert(-1, "-f")
+        command.insert(-1, fmt)
     command[-1] = temp
 
     start_time = time.monotonic()

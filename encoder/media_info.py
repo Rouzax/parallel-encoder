@@ -13,7 +13,7 @@ _log = logging.getLogger("parallel-encoder")
 FFPROBE_TIMEOUT_SECONDS = 30
 
 
-def probe_file(path: str | Path) -> dict:
+def probe_file(path: str | Path, ffprobe_path: str = "ffprobe") -> dict:
     """Run ffprobe on a single file and return a normalised info dict.
 
     Raises RuntimeError if ffprobe exits with a non-zero status, times out,
@@ -24,7 +24,7 @@ def probe_file(path: str | Path) -> dict:
     try:
         result: subprocess.CompletedProcess[bytes] = subprocess.run(
             [
-                "ffprobe",
+                ffprobe_path,
                 "-v", "quiet",
                 "-print_format", "json",
                 "-show_format", "-show_streams",
@@ -77,6 +77,9 @@ def probe_file(path: str | Path) -> dict:
                 "mimetype": tags.get("mimetype") or tags.get("MIMETYPE") or "image/png",
             })
     cover_art_count: int = len(cover_art)
+    attachment_count: int = sum(
+        1 for s in streams if s.get("codec_type") == "attachment"
+    )
 
     video_codec: str | None = None
     video_width: int | None = None
@@ -150,6 +153,7 @@ def probe_file(path: str | Path) -> dict:
         "audio_streams": audio_streams,
         "cover_art_count": cover_art_count,
         "cover_art": cover_art,
+        "attachment_count": attachment_count,
     }
 
 
@@ -161,6 +165,7 @@ _DEFAULT_EXTENSIONS: tuple[str, ...] = (
 def probe_folder(
     folder: str | Path,
     extensions: tuple[str, ...] = _DEFAULT_EXTENSIONS,
+    ffprobe_path: str = "ffprobe",
 ) -> list[dict]:
     """Recursively scan *folder* for video files and probe each one.
 
@@ -178,6 +183,7 @@ def probe_folder(
             if p.is_file()
             and not p.is_symlink()
             and p.suffix.lower().lstrip(".") in ext_lower
+            and not p.name.endswith(".tmp")
             and ".tmp." not in p.name
         ),
         key=lambda p: p.stem.lower(),
@@ -188,7 +194,7 @@ def probe_folder(
     results: list[dict] = []
     for f in files:
         try:
-            results.append(probe_file(f))
+            results.append(probe_file(f, ffprobe_path=ffprobe_path))
         except RuntimeError as exc:
             _log.warning("Skipping %s: %s", f.name, exc)
     return results

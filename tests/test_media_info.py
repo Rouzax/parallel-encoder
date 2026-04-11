@@ -92,7 +92,7 @@ def test_probe_folder_continues_on_single_file_error(tmp_path):
 
     call_count = {"n": 0}
 
-    def mock_probe(path):
+    def mock_probe(path, **kwargs):
         call_count["n"] += 1
         name = Path(path).name
         if "bad" in name:

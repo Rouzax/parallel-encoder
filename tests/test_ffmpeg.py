@@ -76,12 +76,12 @@ def test_build_command_x264_no_duplicate_threads():
 def test_atomic_output_path(tmp_path):
     output = str(tmp_path / "video.mkv")
     temp = atomic_output_path(output)
-    assert temp.endswith(".tmp.mkv")
+    assert temp.endswith(".tmp")
     assert "video" in temp
 
 
 def test_finalize_output_renames(tmp_path):
-    temp_file = tmp_path / "video.tmp.mkv"
+    temp_file = tmp_path / "video.tmp"
     temp_file.write_text("data")
     final = str(tmp_path / "video.mkv")
     finalize_output(str(temp_file), final)
@@ -136,7 +136,7 @@ from encoder.ffmpeg import run_encode
 def test_run_encode_success(tmp_path):
     """Successful encode should finalize output and return success."""
     output = str(tmp_path / "video.mkv")
-    temp = str(tmp_path / "video.tmp.mkv")
+    temp = str(tmp_path / "video.tmp")
 
     mock_process = MagicMock()
     mock_process.returncode = 0
@@ -158,7 +158,7 @@ def test_run_encode_success(tmp_path):
 def test_run_encode_failure_cleans_up_temp(tmp_path):
     """Failed encode should clean up temp file and return failure."""
     output = str(tmp_path / "video.mkv")
-    temp = str(tmp_path / "video.tmp.mkv")
+    temp = str(tmp_path / "video.tmp")
 
     mock_process = MagicMock()
     mock_process.returncode = 1

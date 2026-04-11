@@ -303,6 +303,7 @@ class EncodingJob:
     test_encode: dict | None = field(default=None)
     numa_node: int | None = field(default=None)
     cover_art: list[dict] = field(default_factory=list)
+    attachment_count: int = 0
 
 
 class ParallelEncoder:
@@ -419,6 +420,7 @@ class ParallelEncoder:
                     threads=self.threads_per_worker,
                     test_encode=test_encode_dict,
                     cover_art=cover_art if container.lower() in ("mkv", "matroska") else [],
+                    attachment_count=source_info.get("attachment_count", 0),
                 )
             )
 
@@ -464,9 +466,11 @@ class ParallelEncoder:
         results: list[EncodingResult] = []
         futures: dict[Future[EncodingResult], EncodingJob] = {}
         processed: set[Future[EncodingResult]] = set()
+        self._worker_numa.clear()
 
         import signal
-        original_handler = signal.getsignal(signal.SIGINT)
+        is_main_thread = threading.current_thread() is threading.main_thread()
+        original_handler = signal.getsignal(signal.SIGINT) if is_main_thread else None
 
         def _sigint_handler(signum: int, frame: object) -> None:
             """Handle Ctrl+C immediately rather than waiting for KeyboardInterrupt."""
@@ -480,7 +484,8 @@ class ParallelEncoder:
             _log.info("Received interrupt, stopping all encodes...")
 
         try:
-            signal.signal(signal.SIGINT, _sigint_handler)
+            if is_main_thread:
+                signal.signal(signal.SIGINT, _sigint_handler)
             with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
                 for job in jobs:
                     future = executor.submit(self._run_single, job, progress_callback, start_callback)
@@ -513,7 +518,8 @@ class ParallelEncoder:
                 future.cancel()
 
         finally:
-            signal.signal(signal.SIGINT, original_handler)
+            if is_main_thread:
+                signal.signal(signal.SIGINT, original_handler)
 
         # Recover any results from futures that completed but were not yet
         # iterated by the as_completed loop (e.g. when KeyboardInterrupt
@@ -606,7 +612,10 @@ class ParallelEncoder:
                 extracted = extract_cover_art(
                     self.ffmpeg_path, job.source_path, job.cover_art, cover_art_temp_dir,
                 )
-                attach_args = cover_art_attach_args(extracted)
+                attach_args = cover_art_attach_args(
+                    extracted,
+                    existing_attachment_count=job.attachment_count,
+                )
 
             command = build_command(
                 ffmpeg_path=self.ffmpeg_path,

@@ -116,6 +116,7 @@ presets:
       max_width: 1280
       max_height: 720
       pix_fmt: yuv420p10le
+      colorspace: bt709
     audio:
       mode: transcode
       codec: aac
@@ -134,6 +135,7 @@ presets:
       max_width: 1280
       max_height: 720
       pix_fmt: yuv420p10le
+      colorspace: bt709
     audio:
       mode: transcode
       codec: aac

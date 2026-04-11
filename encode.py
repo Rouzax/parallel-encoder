@@ -15,7 +15,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from encoder.ffmpeg import EncodingResult, find_ffmpeg, find_ffprobe  # noqa: E402
-from encoder.media_info import probe_folder
+from encoder.media_info import probe_file, probe_folder
 from encoder.worker_pool import (
     ParallelEncoder,
     WorkerConfig,
@@ -140,6 +140,7 @@ def _select_preset_interactive(presets: dict[str, dict[str, Any]]) -> tuple[str,
 
 def _run_vmaf_scoring(
     ffmpeg_path: str,
+    ffprobe_path: str,
     source_files: list[dict[str, Any]],
     test_results: list[EncodingResult],
     test_seconds: int,
@@ -184,9 +185,8 @@ def _run_vmaf_scoring(
         src_h = src_info.get("video_height", 720)
 
         # Probe the encoded file for its actual resolution
-        from encoder.media_info import probe_file
         try:
-            target_info = probe_file(result.output_path)
+            target_info = probe_file(result.output_path, ffprobe_path=ffprobe_path)
             tgt_w = target_info.get("video_width", src_w)
             tgt_h = target_info.get("video_height", src_h)
         except RuntimeError:
@@ -474,12 +474,13 @@ def main(
     # ── Check dependencies ──────────────────────────────────────────
     try:
         ffmpeg_path = find_ffmpeg()
-        find_ffprobe()
+        ffprobe_path = find_ffprobe()
     except RuntimeError as e:
         console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
     log.info("Using ffmpeg: %s", ffmpeg_path)
+    log.info("Using ffprobe: %s", ffprobe_path)
 
     # ── Load presets ────────────────────────────────────────────────
     pf = Path(preset_file) if preset_file else _DEFAULT_PRESET_FILE
@@ -535,12 +536,10 @@ def main(
     Path(output).mkdir(parents=True, exist_ok=True)
 
     # ── Clean up stale temp files from previous runs ───────────────
-    # atomic_output_path() creates files like "video.tmp.mkv"
-    # atomic_output_path() produces "name.tmp.ext" — match exactly that pattern
-    _TEMP_EXTENSIONS = (".mkv", ".mp4", ".webm")
-    stale_temps: list[Path] = []
-    for ext in _TEMP_EXTENSIONS:
-        stale_temps.extend(p for p in Path(output).rglob(f"*.tmp{ext}") if p.is_file())
+    # atomic_output_path() produces "name.tmp" — match that pattern
+    stale_temps: list[Path] = [
+        p for p in Path(output).rglob("*.tmp") if p.is_file()
+    ]
     for tmp in stale_temps:
         log.info("Removing stale temp file: %s", tmp)
         try:
@@ -555,7 +554,7 @@ def main(
     # ── Scan source files ───────────────────────────────────────────
     video_extensions = ("mp4", "m4v", "mkv", "avi", "mov", "wmv", "ts", "flv", "webm", "mpeg", "mpg")
     console.print(f"\n[bold]Scanning source folder:[/bold] {source}")
-    source_files = probe_folder(source, extensions=video_extensions)
+    source_files = probe_folder(source, extensions=video_extensions, ffprobe_path=ffprobe_path)
 
     if not source_files:
         console.print("[red]No video files found in source folder.[/red]")
@@ -625,8 +624,15 @@ def main(
                 test_seconds=test_seconds,
             )
 
-            # Probe test outputs for comparison.
-            test_target_files = probe_folder(output, extensions=video_extensions)
+            # Probe only the test output files (not the whole output dir,
+            # which may contain files from a previous full encode).
+            test_target_files: list[dict] = []
+            for r in test_results:
+                if r.success and Path(r.output_path).exists():
+                    try:
+                        test_target_files.append(probe_file(r.output_path, ffprobe_path=ffprobe_path))
+                    except RuntimeError as exc:
+                        log.warning("Could not probe test output %s: %s", r.output_path, exc)
             print_summary_table(source_files, test_results, test_target_files)
 
             if test_only:
@@ -634,6 +640,7 @@ def main(
                 if vmaf:
                     _run_vmaf_scoring(
                         ffmpeg_path=ffmpeg_path,
+                        ffprobe_path=ffprobe_path,
                         source_files=source_files,
                         test_results=test_results,
                         test_seconds=test_seconds,
@@ -702,7 +709,7 @@ def main(
             _copy_sidecars_for_file(Path(sp), source_root, output_root, video_extensions)
 
     # ── Summary ─────────────────────────────────────────────────────
-    target_files = probe_folder(output, extensions=video_extensions)
+    target_files = probe_folder(output, extensions=video_extensions, ffprobe_path=ffprobe_path)
     print_summary_table(source_files, results, target_files)
 
     cancelled_msgs = {"Encoding cancelled.", "Encoding interrupted by user."}
