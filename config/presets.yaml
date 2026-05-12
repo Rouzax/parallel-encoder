@@ -103,6 +103,37 @@ presets:
     subtitles: all
 
   # ─────────────────────────────────────────────────────────────
+  # AV1 (SVT-AV1) — native resolution MKV (quality-focused)
+  # ─────────────────────────────────────────────────────────────
+  mkv-av1-p6-crf22-all-audio:
+    display_name: "MKV - AV1 - P6 CRF22 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 22
+      preset: 6
+      pix_fmt: yuv420p10le
+      svtav1_params:
+        tune: 0
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-av1-p6-crf24-all-audio:
+    display_name: "MKV - AV1 - P6 CRF24 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 24
+      preset: 6
+      pix_fmt: yuv420p10le
+      svtav1_params:
+        tune: 0
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  # ─────────────────────────────────────────────────────────────
   # H.265 10-bit — 720p BT.709 presets (language-specific audio)
   # ─────────────────────────────────────────────────────────────
   mkv-720p-h265-10bit-bt709-faster-rf25-dutch:
