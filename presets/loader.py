@@ -225,14 +225,14 @@ def preset_to_ffmpeg_args(
     # entries here and emit one flag. build_command will then append
     # lp=N to this single value.
     if codec == "libsvtav1":
-        svt_params: list[str] = []
+        svt_kv: dict[str, str] = {}
 
         # Keyframe interval (seconds). Tightening keyint reduces seek
         # granularity and the audio scan window after seek landing in
         # WebM.
         keyint: int | None = video.get("keyint")
         if keyint is not None:
-            svt_params.append(f"keyint={keyint}s")
+            svt_kv["keyint"] = f"{keyint}s"
 
         # Cap SVT-AV1 hierarchical levels for WebM output. SVT-AV1
         # >= 2.x defaults to hierarchical-levels=5, which produces a
@@ -243,10 +243,14 @@ def preset_to_ffmpeg_args(
         # See SVT-AV1 issue #2351 (open) and historical fix !972
         # for #738. Capping at 3 keeps the bug from manifesting.
         if container == "webm":
-            svt_params.append("hierarchical-levels=3")
+            svt_kv["hierarchical-levels"] = "3"
 
-        if svt_params:
-            args.extend(["-svtav1-params", ":".join(svt_params)])
+        for k, v in video.get("svtav1_params", {}).items():
+            svt_kv[str(k)] = str(v)
+
+        if svt_kv:
+            svt_str = ":".join(f"{k}={v}" for k, v in svt_kv.items())
+            args.extend(["-svtav1-params", svt_str])
 
     # ── Video filters (scale + colorspace, combined into one -vf) ──
     vf_filters: list[str] = []

@@ -405,6 +405,135 @@ def test_preset_bt709_colorspace_converts_bt601():
     assert "bt601-6-625" in args[vf_idx + 1]
 
 
+def test_preset_to_ffmpeg_args_svtav1_params_basic():
+    """svtav1_params dict should appear in -svtav1-params output."""
+    preset = {
+        "container": "mkv",
+        "video": {
+            "codec": "libsvtav1",
+            "crf": 22,
+            "preset": 6,
+            "pix_fmt": "yuv420p10le",
+            "svtav1_params": {"tune": 0},
+        },
+        "audio": {"mode": "passthrough"},
+        "subtitles": "all",
+    }
+    source_info = {
+        "video_width": 3840,
+        "video_height": 2160,
+        "audio_streams": [{"codec": "opus", "language": "eng", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    idx = args.index("-svtav1-params")
+    params_str = args[idx + 1]
+    assert "tune=0" in params_str
+
+
+def test_preset_to_ffmpeg_args_svtav1_params_merges_with_keyint():
+    """svtav1_params should merge with computed keyint param."""
+    preset = {
+        "container": "mkv",
+        "video": {
+            "codec": "libsvtav1",
+            "crf": 22,
+            "preset": 6,
+            "keyint": 2,
+            "svtav1_params": {"tune": 0},
+        },
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920,
+        "video_height": 1080,
+        "audio_streams": [],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    idx = args.index("-svtav1-params")
+    params_str = args[idx + 1]
+    assert "keyint=2s" in params_str
+    assert "tune=0" in params_str
+
+
+def test_preset_to_ffmpeg_args_svtav1_params_overrides_computed():
+    """Explicit svtav1_params should override computed defaults like keyint."""
+    preset = {
+        "container": "mkv",
+        "video": {
+            "codec": "libsvtav1",
+            "crf": 22,
+            "preset": 6,
+            "keyint": 2,
+            "svtav1_params": {"keyint": "5s", "tune": 0},
+        },
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920,
+        "video_height": 1080,
+        "audio_streams": [],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    idx = args.index("-svtav1-params")
+    params_str = args[idx + 1]
+    assert "keyint=5s" in params_str
+    assert "keyint=2s" not in params_str
+    assert "tune=0" in params_str
+
+
+def test_preset_to_ffmpeg_args_svtav1_params_multiple():
+    """Multiple svtav1_params should all appear colon-separated."""
+    preset = {
+        "container": "mkv",
+        "video": {
+            "codec": "libsvtav1",
+            "crf": 22,
+            "preset": 6,
+            "svtav1_params": {"tune": 0, "film-grain": 8, "film-grain-denoise": 0},
+        },
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920,
+        "video_height": 1080,
+        "audio_streams": [],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    idx = args.index("-svtav1-params")
+    params_str = args[idx + 1]
+    assert "tune=0" in params_str
+    assert "film-grain=8" in params_str
+    assert "film-grain-denoise=0" in params_str
+
+
+def test_preset_to_ffmpeg_args_svtav1_params_preserves_webm_hierarchical_levels():
+    """WebM hierarchical-levels=3 cap should be preserved alongside svtav1_params."""
+    preset = {
+        "container": "webm",
+        "video": {
+            "codec": "libsvtav1",
+            "crf": 32,
+            "preset": 8,
+            "svtav1_params": {"film-grain": 8},
+        },
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1280,
+        "video_height": 720,
+        "audio_streams": [{"codec": "opus", "channels": "2"}],
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    idx = args.index("-svtav1-params")
+    params_str = args[idx + 1]
+    assert "hierarchical-levels=3" in params_str
+    assert "film-grain=8" in params_str
+
+
 # ---------------------------------------------------------------------------
 # Tests for two-step preset selector helpers
 # ---------------------------------------------------------------------------
