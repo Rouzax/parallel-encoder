@@ -124,33 +124,57 @@ def extract_cover_art(
         stream_idx = art["index"]
         orig_name = art["filename"]
         mimetype = art["mimetype"]
-        # Use unique temp name to avoid collisions (multiple covers may share names)
         ext = Path(orig_name).suffix or ".png"
         temp_path = str(Path(temp_dir) / f"_cover_{i}{ext}")
         try:
-            # Try -dump_attachment first (extracts during input probing, fast)
-            subprocess.run(
-                [ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
-                 f"-dump_attachment:{stream_idx}", temp_path,
-                 "-i", source,
-                 "-t", "0", "-f", "null", "-"],
-                capture_output=True, text=True, timeout=60,
+            dump_cmd = [
+                ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
+                f"-dump_attachment:{stream_idx}", temp_path,
+                "-i", source,
+                "-t", "0", "-f", "null", "-",
+            ]
+            _log.debug("cover_art dump_attachment: stream=%d cmd=%s", stream_idx, " ".join(dump_cmd))
+            dump_result = subprocess.run(dump_cmd, capture_output=True, text=True, timeout=60)
+
+            p = Path(temp_path)
+            dump_exists = p.exists()
+            dump_size = p.stat().st_size if dump_exists else 0
+            _log.debug(
+                "cover_art dump_attachment result: stream=%d rc=%d file_exists=%s file_size=%d stderr=%s",
+                stream_idx, dump_result.returncode, dump_exists, dump_size,
+                dump_result.stderr.strip()[:200] or "(empty)",
             )
-            # The null output may cause non-zero exit; check the file directly
-            if not (Path(temp_path).exists() and Path(temp_path).stat().st_size > 0):
-                # Fallback: extract as image frame (for attached_pic video streams)
-                _log.debug("dump_attachment did not produce file for stream %d, trying -map fallback", stream_idx)
-                subprocess.run(
-                    [ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
-                     "-i", source, "-map", f"0:{stream_idx}",
-                     "-frames:v", "1", temp_path],
-                    capture_output=True, text=True, timeout=120,
+
+            method = "dump_attachment"
+            if not (dump_exists and dump_size > 0):
+                map_cmd = [
+                    ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
+                    "-i", source, "-map", f"0:{stream_idx}",
+                    "-frames:v", "1", temp_path,
+                ]
+                _log.debug("cover_art map_fallback: stream=%d cmd=%s", stream_idx, " ".join(map_cmd))
+                map_result = subprocess.run(map_cmd, capture_output=True, text=True, timeout=120)
+
+                p = Path(temp_path)
+                map_exists = p.exists()
+                map_size = p.stat().st_size if map_exists else 0
+                _log.debug(
+                    "cover_art map_fallback result: stream=%d rc=%d file_exists=%s file_size=%d stderr=%s",
+                    stream_idx, map_result.returncode, map_exists, map_size,
+                    map_result.stderr.strip()[:200] or "(empty)",
                 )
-            if Path(temp_path).exists() and Path(temp_path).stat().st_size > 0:
+                method = "map_fallback"
+
+            p = Path(temp_path)
+            if p.exists() and p.stat().st_size > 0:
+                file_size = p.stat().st_size
                 extracted.append((temp_path, orig_name, mimetype))
-                _log.debug("Extracted cover art: stream %d -> %s (%s)", stream_idx, orig_name, mimetype)
+                _log.debug(
+                    "cover_art extracted: stream=%d method=%s filename=%s mimetype=%s file_size=%d",
+                    stream_idx, method, orig_name, mimetype, file_size,
+                )
             else:
-                _log.warning("Failed to extract cover art stream %d", stream_idx)
+                _log.warning("Failed to extract cover art stream %d after both methods", stream_idx)
         except subprocess.TimeoutExpired:
             _log.warning("Cover art extraction timed out for stream %d", stream_idx)
         except Exception as exc:
@@ -566,7 +590,6 @@ def run_encode(
     progress_callback: Callable[[dict], None] | None = None,
     cancel_event: threading.Event | None = None,
     numa_node: int | None = None,
-    threads_per_numa: int | None = None,
     process_started: Callable[[subprocess.Popen], None] | None = None,  # type: ignore[type-arg]
     process_ended: Callable[[subprocess.Popen], None] | None = None,  # type: ignore[type-arg]
 ) -> EncodingResult:

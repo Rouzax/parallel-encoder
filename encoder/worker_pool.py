@@ -660,7 +660,6 @@ class ParallelEncoder:
                 progress_callback=per_file_cb,
                 cancel_event=self._cancel_event,
                 numa_node=numa_node,
-                threads_per_numa=self.config.topology.threads_per_numa,
                 process_started=_on_process_started,
                 process_ended=_on_process_ended,
             )
