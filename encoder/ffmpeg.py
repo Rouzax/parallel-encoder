@@ -130,8 +130,9 @@ def extract_cover_art(
         try:
             result = subprocess.run(
                 [ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
-                 "-i", source, "-map", f"0:{stream_idx}", "-frames:v", "1", temp_path],
-                capture_output=True, text=True, timeout=30,
+                 f"-dump_attachment:{stream_idx}", temp_path,
+                 "-i", source],
+                capture_output=True, text=True, timeout=60,
             )
             if result.returncode == 0 and Path(temp_path).exists():
                 extracted.append((temp_path, orig_name, mimetype))
