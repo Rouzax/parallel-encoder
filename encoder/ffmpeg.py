@@ -128,18 +128,31 @@ def extract_cover_art(
         ext = Path(orig_name).suffix or ".png"
         temp_path = str(Path(temp_dir) / f"_cover_{i}{ext}")
         try:
-            result = subprocess.run(
+            # Try -dump_attachment first (extracts during input probing, fast)
+            subprocess.run(
                 [ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
                  f"-dump_attachment:{stream_idx}", temp_path,
                  "-i", source,
                  "-t", "0", "-f", "null", "-"],
                 capture_output=True, text=True, timeout=60,
             )
-            if result.returncode == 0 and Path(temp_path).exists():
+            # The null output may cause non-zero exit; check the file directly
+            if not (Path(temp_path).exists() and Path(temp_path).stat().st_size > 0):
+                # Fallback: extract as image frame (for attached_pic video streams)
+                _log.debug("dump_attachment did not produce file for stream %d, trying -map fallback", stream_idx)
+                subprocess.run(
+                    [ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error",
+                     "-i", source, "-map", f"0:{stream_idx}",
+                     "-frames:v", "1", temp_path],
+                    capture_output=True, text=True, timeout=120,
+                )
+            if Path(temp_path).exists() and Path(temp_path).stat().st_size > 0:
                 extracted.append((temp_path, orig_name, mimetype))
                 _log.debug("Extracted cover art: stream %d -> %s (%s)", stream_idx, orig_name, mimetype)
             else:
-                _log.warning("Failed to extract cover art stream %d: %s", stream_idx, result.stderr.strip())
+                _log.warning("Failed to extract cover art stream %d", stream_idx)
+        except subprocess.TimeoutExpired:
+            _log.warning("Cover art extraction timed out for stream %d", stream_idx)
         except Exception as exc:
             _log.warning("Error extracting cover art stream %d: %s", stream_idx, exc)
     return extracted
