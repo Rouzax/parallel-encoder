@@ -222,6 +222,57 @@ def _run_vmaf_scoring(
     console.print(vmaf_table)
 
 
+def _print_full_encode_projection(
+    source_files: list[dict[str, Any]],
+    test_results: list[EncodingResult],
+    test_target_files: list[dict[str, Any]],
+    test_seconds: int,
+) -> None:
+    """Print projected full encode size and time based on test encode results."""
+    from encoder.media_info import format_size
+
+    console = Console()
+    for sf in source_files:
+        source_duration = sf.get("duration", 0.0)
+        source_size = sf.get("file_size", 0)
+        if source_duration <= 0 or source_size <= 0:
+            continue
+
+        result = next(
+            (r for r in test_results if r.success and Path(r.source_path).stem == sf["filename"]),
+            None,
+        )
+        if result is None:
+            continue
+
+        target = next(
+            (t for t in test_target_files if Path(t["path"]).stem == sf["filename"]),
+            None,
+        )
+        target_bitrate = target.get("total_bitrate") if target else None
+        if target_bitrate is None or target_bitrate <= 0:
+            continue
+
+        projected_bytes = int(target_bitrate * source_duration / 8)
+        reduction_pct = (1 - projected_bytes / source_size) * 100
+
+        test_duration = min(test_seconds, source_duration)
+        speed_ratio = result.encoding_time / test_duration if test_duration > 0 else 0
+        projected_time = speed_ratio * source_duration
+
+        hours = int(projected_time // 3600)
+        minutes = int((projected_time % 3600) // 60)
+        seconds = int(projected_time % 60)
+        time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+        sign = "-" if reduction_pct > 0 else "+"
+        console.print(
+            f"\n[bold]Projected full encode:[/bold] ~{format_size(projected_bytes)} "
+            f"({sign}{abs(reduction_pct):.1f}% from {format_size(source_size)}), "
+            f"~{time_str} encode time"
+        )
+
+
 def _cleanup_test_outputs(output_paths: list[str]) -> None:
     """Remove only the files that the test encode created."""
     for path_str in output_paths:
@@ -634,6 +685,7 @@ def main(
                     except RuntimeError as exc:
                         log.warning("Could not probe test output %s: %s", r.output_path, exc)
             print_summary_table(source_files, test_results, test_target_files)
+            _print_full_encode_projection(source_files, test_results, test_target_files, test_seconds)
 
             if test_only:
                 # Run VMAF scoring if requested
