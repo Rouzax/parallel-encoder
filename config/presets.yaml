@@ -133,6 +133,34 @@ presets:
       mode: passthrough
     subtitles: all
 
+  mkv-av1-p6-crf28-all-audio:
+    display_name: "MKV - AV1 - P6 CRF28 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 28
+      preset: 6
+      pix_fmt: yuv420p10le
+      svtav1_params:
+        tune: 0
+    audio:
+      mode: passthrough
+    subtitles: all
+
+  mkv-av1-p6-crf30-all-audio:
+    display_name: "MKV - AV1 - P6 CRF30 - All Audio Passthru"
+    container: mkv
+    video:
+      codec: libsvtav1
+      crf: 30
+      preset: 6
+      pix_fmt: yuv420p10le
+      svtav1_params:
+        tune: 0
+    audio:
+      mode: passthrough
+    subtitles: all
+
   # ─────────────────────────────────────────────────────────────
   # H.265 10-bit — 720p BT.709 presets (language-specific audio)
   # ─────────────────────────────────────────────────────────────
