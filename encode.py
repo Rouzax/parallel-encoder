@@ -197,11 +197,10 @@ def _run_vmaf_scoring(
         except RuntimeError:
             tgt_w, tgt_h = 1280, 720
 
-        scores: dict | None = None
+        result_holder: list[dict | None] = [None]
 
         def _score() -> None:
-            nonlocal scores
-            scores = run_vmaf(
+            result_holder[0] = run_vmaf(
                 ffmpeg_path=ffmpeg_path,
                 source_path=result.source_path,
                 encoded_path=result.output_path,
@@ -224,6 +223,7 @@ def _run_vmaf_scoring(
                 status.update(f"  Scoring [cyan]{filename}[/cyan]... {mins}:{secs:02d}")
                 worker.join(timeout=1.0)
 
+        scores = result_holder[0]
         if scores is not None:
             vmaf_score = scores["vmaf"]
             label = vmaf_quality_label(vmaf_score)
