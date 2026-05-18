@@ -19,12 +19,13 @@ def vmaf_sample_window(
     """Compute the VMAF subsample window within a test encode segment.
 
     Returns (source_start, encoded_start, duration) for the VMAF command.
+    Always compares from the start of the encoded file to avoid frame
+    misalignment caused by keyframe-based seeking in the source.
     """
-    if segment_duration is None or segment_duration <= VMAF_SAMPLE_SECONDS:
-        return source_start, None, segment_duration
-    offset = (segment_duration - VMAF_SAMPLE_SECONDS) / 2
-    vmaf_source_start = (source_start or 0) + offset
-    return vmaf_source_start, offset, float(VMAF_SAMPLE_SECONDS)
+    duration = segment_duration
+    if duration is not None and duration > VMAF_SAMPLE_SECONDS:
+        duration = float(VMAF_SAMPLE_SECONDS)
+    return source_start, None, duration
 
 
 def _vmaf_timeout(

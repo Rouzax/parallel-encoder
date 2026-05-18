@@ -99,16 +99,16 @@ def test_run_vmaf_no_source_width_height_params():
 
 
 
-def test_sample_window_long_segment():
+def test_sample_window_long_segment_caps_duration():
     src_start, enc_start, dur = vmaf_sample_window(
         source_start=1350.0, segment_duration=120.0
     )
     assert dur == 15.0
-    assert enc_start == 52.5
-    assert src_start == 1402.5
+    assert enc_start is None
+    assert src_start == 1350.0
 
 
-def test_sample_window_short_segment():
+def test_sample_window_short_segment_unchanged():
     src_start, enc_start, dur = vmaf_sample_window(
         source_start=10.0, segment_duration=10.0
     )
@@ -140,5 +140,5 @@ def test_sample_window_none_source_start():
         source_start=None, segment_duration=120.0
     )
     assert dur == 15.0
-    assert enc_start == 52.5
-    assert src_start == 52.5
+    assert enc_start is None
+    assert src_start is None
