@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from unittest.mock import patch, MagicMock
-import subprocess
 
 from encoder.vmaf import _vmaf_timeout, VMAF_SAMPLE_SECONDS, run_vmaf
 
