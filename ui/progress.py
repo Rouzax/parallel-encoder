@@ -291,8 +291,8 @@ def print_summary_table(
                 # For test encodes (target much shorter than source),
                 # compare bitrate instead of file size
                 if tgt_dur > 0 and src_dur > 0 and tgt_dur < src_dur * 0.9:
-                    src_br = sf.get("total_bitrate") or sf.get("video_bitrate") or 0
-                    tgt_br = tf.get("total_bitrate") or tf.get("video_bitrate") or 0
+                    src_br = sf.get("video_bitrate") or sf.get("total_bitrate") or 0
+                    tgt_br = tf.get("video_bitrate") or tf.get("total_bitrate") or 0
                     if src_br > 0:
                         pct = ((tgt_br - src_br) / src_br) * 100
                     else:
