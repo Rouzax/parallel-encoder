@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch, MagicMock
 
-from encoder.vmaf import _vmaf_timeout, VMAF_SAMPLE_SECONDS, run_vmaf
+from encoder.vmaf import _vmaf_timeout, VMAF_SAMPLE_SECONDS, run_vmaf, vmaf_sample_window
 
 
 def test_vmaf_timeout_1080p_default():
@@ -95,8 +95,6 @@ def test_run_vmaf_no_source_width_height_params():
     assert "source_width" not in param_names
     assert "source_height" not in param_names
 
-
-from encoder.vmaf import vmaf_sample_window
 
 
 def test_sample_window_long_segment():
