@@ -180,11 +180,9 @@ def _run_vmaf_scoring(
             start_seconds = (duration - test_seconds) / 2
             dur_seconds = test_seconds
 
-        # Get source and target dimensions
+        # Probe the encoded file for its actual resolution; fall back to source dimensions
         src_w = src_info.get("video_width", 1280)
         src_h = src_info.get("video_height", 720)
-
-        # Probe the encoded file for its actual resolution
         try:
             target_info = probe_file(result.output_path, ffprobe_path=ffprobe_path)
             tgt_w = target_info.get("video_width", src_w)
@@ -198,8 +196,6 @@ def _run_vmaf_scoring(
             ffmpeg_path=ffmpeg_path,
             source_path=result.source_path,
             encoded_path=result.output_path,
-            source_width=src_w,
-            source_height=src_h,
             target_width=tgt_w,
             target_height=tgt_h,
             start_seconds=start_seconds,

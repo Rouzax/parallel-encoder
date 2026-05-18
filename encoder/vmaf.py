@@ -39,12 +39,11 @@ def run_vmaf(
     ffmpeg_path: str,
     source_path: str,
     encoded_path: str,
-    source_width: int,  # noqa: ARG001 - reserved for future use
-    source_height: int,  # noqa: ARG001 - reserved for future use
     target_width: int,
     target_height: int,
     start_seconds: float | None = None,
     duration_seconds: float | None = None,
+    encoded_start_seconds: float | None = None,
 ) -> dict | None:
     """Run VMAF comparison between source and encoded file.
 
@@ -63,7 +62,8 @@ def run_vmaf(
 
     cmd: list[str] = [ffmpeg_path, "-hide_banner"]
 
-    # Input args for encoded file (no seeking needed, it's already the segment)
+    if encoded_start_seconds is not None:
+        cmd.extend(["-ss", str(encoded_start_seconds)])
     cmd.extend(["-i", encoded_path])
 
     # Input args for source file (seek to same segment)

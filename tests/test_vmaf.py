@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from encoder.vmaf import _vmaf_timeout, VMAF_SAMPLE_SECONDS
+from unittest.mock import patch, MagicMock
+import subprocess
+
+from encoder.vmaf import _vmaf_timeout, VMAF_SAMPLE_SECONDS, run_vmaf
 
 
 def test_vmaf_timeout_1080p_default():
@@ -38,3 +41,57 @@ def test_vmaf_timeout_below_1080p_clamps_to_base():
 
 def test_vmaf_sample_seconds_is_15():
     assert VMAF_SAMPLE_SECONDS == 15
+
+
+def _make_vmaf_result(score: float) -> MagicMock:
+    """Create a mock subprocess result that returns a VMAF score on stderr."""
+    mock = MagicMock()
+    mock.returncode = 0
+    mock.stderr = f"VMAF score: {score}".encode()
+    mock.stdout = b""
+    return mock
+
+
+def test_run_vmaf_adds_encoded_seeking():
+    with patch("encoder.vmaf.subprocess.run", return_value=_make_vmaf_result(92.5)) as mock_run:
+        run_vmaf(
+            ffmpeg_path="ffmpeg",
+            source_path="/src/video.mkv",
+            encoded_path="/enc/video.mp4",
+            target_width=1920,
+            target_height=1080,
+            start_seconds=100.0,
+            duration_seconds=15.0,
+            encoded_start_seconds=52.5,
+        )
+        cmd = mock_run.call_args[0][0]
+        # -ss for encoded file appears before the first -i
+        ss_idx = cmd.index("-ss")
+        first_i_idx = cmd.index("-i")
+        assert ss_idx < first_i_idx
+        assert cmd[ss_idx + 1] == "52.5"
+
+
+def test_run_vmaf_no_encoded_seeking_by_default():
+    with patch("encoder.vmaf.subprocess.run", return_value=_make_vmaf_result(92.5)) as mock_run:
+        run_vmaf(
+            ffmpeg_path="ffmpeg",
+            source_path="/src/video.mkv",
+            encoded_path="/enc/video.mp4",
+            target_width=1920,
+            target_height=1080,
+        )
+        cmd = mock_run.call_args[0][0]
+        # No -ss should appear before the first -i (encoded input)
+        first_i_idx = cmd.index("-i")
+        pre_first_input = cmd[:first_i_idx]
+        assert "-ss" not in pre_first_input
+
+
+def test_run_vmaf_no_source_width_height_params():
+    """Verify dead params were removed from signature."""
+    import inspect
+    sig = inspect.signature(run_vmaf)
+    param_names = list(sig.parameters.keys())
+    assert "source_width" not in param_names
+    assert "source_height" not in param_names
