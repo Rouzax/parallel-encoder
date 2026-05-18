@@ -146,7 +146,7 @@ def _run_vmaf_scoring(
     test_seconds: int,
 ) -> None:
     """Run VMAF scoring on test encode results."""
-    from encoder.vmaf import check_vmaf_support, run_vmaf, vmaf_quality_label
+    from encoder.vmaf import check_vmaf_support, run_vmaf, vmaf_quality_label, vmaf_sample_window
     from rich.table import Table
 
     if not check_vmaf_support(ffmpeg_path):
@@ -180,6 +180,10 @@ def _run_vmaf_scoring(
             start_seconds = (duration - test_seconds) / 2
             dur_seconds = test_seconds
 
+        vmaf_src_start, vmaf_enc_start, vmaf_dur = vmaf_sample_window(
+            start_seconds, dur_seconds,
+        )
+
         # Probe the encoded file for its actual resolution; fall back to source dimensions
         src_w = src_info.get("video_width", 1280)
         src_h = src_info.get("video_height", 720)
@@ -198,8 +202,9 @@ def _run_vmaf_scoring(
             encoded_path=result.output_path,
             target_width=tgt_w,
             target_height=tgt_h,
-            start_seconds=start_seconds,
-            duration_seconds=dur_seconds,
+            start_seconds=vmaf_src_start,
+            duration_seconds=vmaf_dur,
+            encoded_start_seconds=vmaf_enc_start,
         )
 
         if scores is not None:

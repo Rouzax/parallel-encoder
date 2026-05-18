@@ -12,6 +12,21 @@ _log = logging.getLogger("parallel-encoder")
 VMAF_SAMPLE_SECONDS = 15
 
 
+def vmaf_sample_window(
+    source_start: float | None,
+    segment_duration: float | None,
+) -> tuple[float | None, float | None, float | None]:
+    """Compute the VMAF subsample window within a test encode segment.
+
+    Returns (source_start, encoded_start, duration) for the VMAF command.
+    """
+    if segment_duration is None or segment_duration <= VMAF_SAMPLE_SECONDS:
+        return source_start, None, segment_duration
+    offset = (segment_duration - VMAF_SAMPLE_SECONDS) / 2
+    vmaf_source_start = (source_start or 0) + offset
+    return vmaf_source_start, offset, float(VMAF_SAMPLE_SECONDS)
+
+
 def _vmaf_timeout(
     target_width: int, target_height: int, duration_seconds: float | None
 ) -> int:
