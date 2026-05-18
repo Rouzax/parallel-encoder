@@ -51,7 +51,7 @@ def _make_vmaf_result(score: float) -> MagicMock:
     return mock
 
 
-def test_run_vmaf_adds_encoded_seeking():
+def test_run_vmaf_adds_encoded_seeking_and_duration():
     with patch("encoder.vmaf.subprocess.run", return_value=_make_vmaf_result(92.5)) as mock_run:
         run_vmaf(
             ffmpeg_path="ffmpeg",
@@ -64,11 +64,13 @@ def test_run_vmaf_adds_encoded_seeking():
             encoded_start_seconds=52.5,
         )
         cmd = mock_run.call_args[0][0]
-        # -ss for encoded file appears before the first -i
-        ss_idx = cmd.index("-ss")
         first_i_idx = cmd.index("-i")
-        assert ss_idx < first_i_idx
-        assert cmd[ss_idx + 1] == "52.5"
+        pre_first_input = cmd[:first_i_idx]
+        # -ss and -t both appear before the first -i (encoded input)
+        assert "-ss" in pre_first_input
+        assert pre_first_input[pre_first_input.index("-ss") + 1] == "52.5"
+        assert "-t" in pre_first_input
+        assert pre_first_input[pre_first_input.index("-t") + 1] == "15.0"
 
 
 def test_run_vmaf_no_encoded_seeking_by_default():

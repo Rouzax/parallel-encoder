@@ -75,13 +75,14 @@ def run_vmaf(
         f"[0:v][ref]libvmaf=log_fmt=json:log_path=-:n_threads=0"
     )
 
-    cmd: list[str] = [ffmpeg_path, "-hide_banner"]
+    cmd: list[str] = [ffmpeg_path, "-hide_banner", "-threads", "0"]
 
     if encoded_start_seconds is not None:
         cmd.extend(["-ss", str(encoded_start_seconds)])
+    if duration_seconds is not None:
+        cmd.extend(["-t", str(duration_seconds)])
     cmd.extend(["-i", encoded_path])
 
-    # Input args for source file (seek to same segment)
     if start_seconds is not None:
         cmd.extend(["-ss", str(start_seconds)])
     if duration_seconds is not None:
