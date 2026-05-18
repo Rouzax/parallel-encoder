@@ -79,8 +79,8 @@ def run_vmaf(
 
     try:
         timeout = _vmaf_timeout(target_width, target_height, duration_seconds)
-        _log.debug("VMAF timeout: %ds (resolution=%dx%d, duration=%s)",
-                    timeout, target_width, target_height, duration_seconds)
+        _log.debug("VMAF timeout computed timeout=%ds resolution=%dx%d duration=%s",
+                   timeout, target_width, target_height, duration_seconds)
         result = subprocess.run(
             cmd,
             capture_output=True,
