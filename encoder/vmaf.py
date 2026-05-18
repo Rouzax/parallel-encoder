@@ -32,7 +32,7 @@ def _vmaf_timeout(
 ) -> int:
     pixel_ratio = (target_width * target_height) / (1920 * 1080)
     sample_secs = duration_seconds if duration_seconds is not None else VMAF_SAMPLE_SECONDS
-    base = max(120, int(sample_secs * 8))
+    base = max(300, int(sample_secs * 20))
     return int(base * max(1.0, pixel_ratio))
 
 
