@@ -9,7 +9,16 @@ import subprocess
 
 _log = logging.getLogger("parallel-encoder")
 
-VMAF_TIMEOUT_SECONDS = 600  # 10 minutes per comparison
+VMAF_SAMPLE_SECONDS = 15
+
+
+def _vmaf_timeout(
+    target_width: int, target_height: int, duration_seconds: float | None
+) -> int:
+    pixel_ratio = (target_width * target_height) / (1920 * 1080)
+    sample_secs = duration_seconds if duration_seconds is not None else VMAF_SAMPLE_SECONDS
+    base = max(120, int(sample_secs * 8))
+    return int(base * max(1.0, pixel_ratio))
 
 
 def check_vmaf_support(ffmpeg_path: str) -> bool:
@@ -49,7 +58,7 @@ def run_vmaf(
     scale_filter = f"scale={target_width}:{target_height}:flags=bicubic"
     vmaf_filter = (
         f"[1:v]{scale_filter}[ref];"
-        f"[0:v][ref]libvmaf=log_fmt=json:log_path=-"
+        f"[0:v][ref]libvmaf=log_fmt=json:log_path=-:n_threads=0"
     )
 
     cmd: list[str] = [ffmpeg_path, "-hide_banner"]
@@ -69,10 +78,13 @@ def run_vmaf(
     _log.debug("VMAF command: %s", " ".join(cmd))
 
     try:
+        timeout = _vmaf_timeout(target_width, target_height, duration_seconds)
+        _log.debug("VMAF timeout: %ds (resolution=%dx%d, duration=%s)",
+                    timeout, target_width, target_height, duration_seconds)
         result = subprocess.run(
             cmd,
             capture_output=True,
-            timeout=VMAF_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired:
         _log.warning("VMAF timed out for %s", encoded_path)
