@@ -67,13 +67,19 @@ def run_vmaf(
 
     Returns a dict with vmaf/psnr scores, or None on failure.
     """
-    # Build the filter: scale source down to encoded resolution, then compare
+    # Build the filter: scale source to match encoded resolution, then compare
     # [0:v] = encoded (distorted), [1:v] = source (reference)
     # VMAF expects: distorted first, reference second
-    scale_filter = f"scale={target_width}:{target_height}:flags=bicubic"
+    # setpts=PTS-STARTPTS on both streams resets timestamps to 0 so
+    # framesync aligns frames correctly after input-level seeking
+    vmaf_opts = "log_fmt=json:log_path=-:n_threads=0"
+    ref_chain = "setpts=PTS-STARTPTS,scale={w}:{h}:flags=bicubic".format(
+        w=target_width, h=target_height,
+    )
     vmaf_filter = (
-        f"[1:v]{scale_filter}[ref];"
-        f"[0:v][ref]libvmaf=log_fmt=json:log_path=-:n_threads=0"
+        f"[1:v]{ref_chain}[ref];"
+        f"[0:v]setpts=PTS-STARTPTS[dist];"
+        f"[dist][ref]libvmaf={vmaf_opts}"
     )
 
     cmd: list[str] = [ffmpeg_path, "-hide_banner", "-threads", "0"]
