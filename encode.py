@@ -146,6 +146,9 @@ def _run_vmaf_scoring(
     test_seconds: int,
 ) -> None:
     """Run VMAF scoring on test encode results."""
+    import threading
+    import time
+
     from encoder.vmaf import check_vmaf_support, run_vmaf, vmaf_quality_label, vmaf_sample_window
     from rich.table import Table
 
@@ -194,18 +197,32 @@ def _run_vmaf_scoring(
         except RuntimeError:
             tgt_w, tgt_h = 1280, 720
 
-        console.print(f"  Scoring [cyan]{Path(result.source_path).name}[/cyan]...")
+        scores: dict | None = None
 
-        scores = run_vmaf(
-            ffmpeg_path=ffmpeg_path,
-            source_path=result.source_path,
-            encoded_path=result.output_path,
-            target_width=tgt_w,
-            target_height=tgt_h,
-            start_seconds=vmaf_src_start,
-            duration_seconds=vmaf_dur,
-            encoded_start_seconds=vmaf_enc_start,
-        )
+        def _score() -> None:
+            nonlocal scores
+            scores = run_vmaf(
+                ffmpeg_path=ffmpeg_path,
+                source_path=result.source_path,
+                encoded_path=result.output_path,
+                target_width=tgt_w,
+                target_height=tgt_h,
+                start_seconds=vmaf_src_start,
+                duration_seconds=vmaf_dur,
+                encoded_start_seconds=vmaf_enc_start,
+            )
+
+        worker = threading.Thread(target=_score)
+        t0 = time.monotonic()
+        worker.start()
+
+        filename = Path(result.source_path).name
+        with console.status("") as status:
+            while worker.is_alive():
+                elapsed = int(time.monotonic() - t0)
+                mins, secs = divmod(elapsed, 60)
+                status.update(f"  Scoring [cyan]{filename}[/cyan]... {mins}:{secs:02d}")
+                worker.join(timeout=1.0)
 
         if scores is not None:
             vmaf_score = scores["vmaf"]
