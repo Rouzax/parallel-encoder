@@ -323,10 +323,15 @@ def _copy_sidecars_for_file(
     Directory-level files that don't match *any* video stem (e.g.
     ``folder.jpg``) are also copied.
 
-    Only copies files that don't already exist in the output.
+    Copies a sidecar when it is missing from the output, or when the source
+    file is newer than the existing output copy (by mtime). Because
+    :func:`shutil.copy2` preserves mtime, an unchanged sidecar compares equal
+    on re-runs and is left untouched; only genuinely updated sidecars are
+    re-copied.
 
     Returns the number of files copied.
     """
+    _log = logging.getLogger("parallel-encoder")
     ext_lower: set[str] = {e.lower().lstrip(".") for e in video_extensions}
     src_dir = source_path.parent
     video_stem = source_path.stem
@@ -346,7 +351,18 @@ def _copy_sidecars_for_file(
         relative = src_file.relative_to(source_root)
         dst_file = output_root / relative
         if dst_file.exists():
-            continue
+            src_mtime = src_file.stat().st_mtime
+            dst_mtime = dst_file.stat().st_mtime
+            if src_mtime <= dst_mtime:
+                _log.debug(
+                    "sidecar up-to-date, skipping src=%s src_mtime=%.0f dst_mtime=%.0f",
+                    src_file.name, src_mtime, dst_mtime,
+                )
+                continue
+            _log.debug(
+                "sidecar stale, refreshing src=%s src_mtime=%.0f dst_mtime=%.0f",
+                src_file.name, src_mtime, dst_mtime,
+            )
         dst_file.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_file, dst_file)
         copied += 1
@@ -510,7 +526,7 @@ def _run_encoding(
 @click.option("--test-encode", is_flag=True, help="Run a test encode before full encode.")
 @click.option("--test-only", is_flag=True, help="Run test encode and exit (no prompt, no full encode).")
 @click.option("--test-seconds", default=120, type=int, help="Duration of test encode in seconds.")
-@click.option("--copy-all", is_flag=True, help="Copy non-video files to the output folder.")
+@click.option("--copy-all", is_flag=True, help="Copy non-video files to the output folder. Refreshes output copies whose source is newer.")
 @click.option("--dry-run", is_flag=True, help="Print FFmpeg commands without executing.")
 @click.option("--overwrite", is_flag=True, help="Re-encode files even if output already exists.")
 @click.option("--vmaf", is_flag=True, help="Run VMAF quality scoring after test encode (requires --test-only or --test-encode).")

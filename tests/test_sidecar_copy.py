@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from encode import _collect_video_stems, _copy_sidecars_for_file
@@ -70,7 +71,7 @@ def test_directory_level_sidecar_copied(tmp_path: Path) -> None:
 
 def test_no_duplicate_copy(tmp_path: Path) -> None:
     """Calling twice should not re-copy already existing files."""
-    source, output = _setup_source(tmp_path)
+    source, _ = _setup_source(tmp_path)
     source_root = tmp_path / "source"
     output_root = tmp_path / "output"
 
@@ -83,6 +84,52 @@ def test_no_duplicate_copy(tmp_path: Path) -> None:
 
     assert first > 0
     assert second == 0
+
+
+def test_stale_sidecar_refreshed(tmp_path: Path) -> None:
+    """A source sidecar newer than the output copy should be re-copied."""
+    source, output = _setup_source(tmp_path)
+    source_root = tmp_path / "source"
+    output_root = tmp_path / "output"
+
+    _copy_sidecars_for_file(
+        source / "Movie A.mkv", source_root, output_root, VIDEO_EXTS,
+    )
+    assert (output / "Movie A.nfo").read_bytes() == b"nfo-a"
+
+    # Update the source sidecar and mark it newer than the output copy.
+    nfo = source / "Movie A.nfo"
+    nfo.write_bytes(b"nfo-a-updated")
+    dst_mtime = (output / "Movie A.nfo").stat().st_mtime
+    os.utime(nfo, (dst_mtime + 10, dst_mtime + 10))
+
+    refreshed = _copy_sidecars_for_file(
+        source / "Movie A.mkv", source_root, output_root, VIDEO_EXTS,
+    )
+
+    assert refreshed == 1
+    assert (output / "Movie A.nfo").read_bytes() == b"nfo-a-updated"
+
+
+def test_unchanged_sidecar_not_refreshed(tmp_path: Path) -> None:
+    """An older or equal-mtime source sidecar must not overwrite the output."""
+    source, output = _setup_source(tmp_path)
+    source_root = tmp_path / "source"
+    output_root = tmp_path / "output"
+
+    _copy_sidecars_for_file(
+        source / "Movie A.mkv", source_root, output_root, VIDEO_EXTS,
+    )
+
+    # Edit the output copy, then re-run with an unchanged (not newer) source.
+    (output / "Movie A.nfo").write_bytes(b"nfo-a-local-edit")
+
+    refreshed = _copy_sidecars_for_file(
+        source / "Movie A.mkv", source_root, output_root, VIDEO_EXTS,
+    )
+
+    assert refreshed == 0
+    assert (output / "Movie A.nfo").read_bytes() == b"nfo-a-local-edit"
 
 
 def test_collect_video_stems(tmp_path: Path) -> None:
