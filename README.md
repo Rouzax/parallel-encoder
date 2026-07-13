@@ -33,6 +33,39 @@ Or install directly from GitHub:
 pip install git+https://github.com/Rouzax/parallel-encoder.git
 ```
 
+To pin to a specific release rather than tracking the default branch:
+
+```bash
+pip install git+https://github.com/Rouzax/parallel-encoder.git@v0.2.0
+```
+
+## Upgrading
+
+If you installed from GitHub, upgrade to the latest release with:
+
+```bash
+pip install --upgrade git+https://github.com/Rouzax/parallel-encoder.git
+```
+
+Check which version you are on with `pip show parallel-encoder`.
+
+### If the upgrade appears to do nothing
+
+pip decides whether to upgrade by comparing version numbers, and it does not
+look at the Git history. If the installed version and the version on the
+default branch are the same, `--upgrade` reports success but leaves your old
+code in place. That happens when you are tracking the branch between releases,
+or when a release did not bump the version.
+
+To force pip to rebuild from the current branch regardless of version:
+
+```bash
+pip install --force-reinstall git+https://github.com/Rouzax/parallel-encoder.git
+```
+
+This always fetches and reinstalls, so use it whenever you want the very latest
+commit rather than the latest tagged release.
+
 ## Usage
 
 ```bash
