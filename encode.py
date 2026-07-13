@@ -436,7 +436,12 @@ def _run_encoding(
                 threads=job.threads,
                 test_encode=job.test_encode,
             )
-            console.print(f"[dim]{' '.join(cmd)}[/dim]\n")
+            # Print the command verbatim: markup and emoji substitution must be
+            # off, or Rich eats parts of it. Stream specifiers like ":v:" and
+            # ":a:" render as emoji, and filenames containing "[Bluray-2160p]"
+            # parse as style tags, so the printed command isn't runnable.
+            console.print(" ".join(cmd), style="dim", markup=False, emoji=False, highlight=False)
+            console.print()
         return [], skipped, rejected
 
     if not jobs:
