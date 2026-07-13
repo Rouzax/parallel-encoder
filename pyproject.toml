@@ -13,7 +13,12 @@ dependencies = [
 py-modules = ["encode", "logger"]
 
 [tool.setuptools.packages.find]
-include = ["encoder*", "presets*", "ui*"]
+include = ["encoder*", "presets*", "ui*", "config*"]
+
+# Ship the bundled presets. Without this the installed CLI has no preset file
+# and fails on startup, since encode.py looks for <install root>/config/presets.yaml.
+[tool.setuptools.package-data]
+config = ["*.yaml"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-tmp-files>=0.0.2"]
