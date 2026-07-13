@@ -9,9 +9,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-_log = logging.getLogger("parallel-encoder")
-
 import yaml
+
+from presets.languages import languages_match
+
+_log = logging.getLogger("parallel-encoder")
 
 # Default Opus bitrates per channel count when source bitrate is unknown.
 _OPUS_BITRATE_BY_CHANNELS: dict[int, str] = {
@@ -24,6 +26,52 @@ _OPUS_BITRATE_DEFAULT = "160k"
 
 _REQUIRED_VIDEO_KEYS = {"codec", "crf"}
 _VALID_AUDIO_MODES = {"passthrough", "transcode"}
+
+
+class AudioLanguageNotFoundError(ValueError):
+    """The source has no audio stream in the language the preset asks for.
+
+    Raised instead of letting FFmpeg fail mid-encode, so the caller can skip
+    the file up front and report it.
+    """
+
+
+def _select_audio_stream(audio_streams: list[dict], language: str) -> int:
+    """Find the audio stream index for a requested language.
+
+    Matching is ISO 639 aware: a preset asking for ``nld`` matches a stream
+    tagged ``dut``, and vice versa (see :mod:`presets.languages`). When several
+    streams match, the first is used.
+
+    Args:
+        audio_streams: ``source_info["audio_streams"]``, in source order.
+        language: The language code requested by the preset.
+
+    Returns:
+        The index of the matching stream, relative to the audio streams
+        (i.e. the ``N`` in FFmpeg's ``0:a:N``).
+
+    Raises:
+        AudioLanguageNotFoundError: If no audio stream matches.
+    """
+    for index, stream in enumerate(audio_streams):
+        stream_language = stream.get("language")
+        if languages_match(stream_language, language):
+            _log.debug(
+                "audio_language matched: requested=%s stream=0:a:%d tag=%s",
+                language, index, stream_language,
+            )
+            return index
+
+    available = [s.get("language") or "und" for s in audio_streams] or ["<no audio>"]
+    _log.warning(
+        "audio_language no match: requested=%s available=%s",
+        language, ",".join(available),
+    )
+    raise AudioLanguageNotFoundError(
+        f"preset requests {language!r} audio, but the source only has "
+        f"[{', '.join(available)}]"
+    )
 
 
 def _pick_opus_bitrate(audio_streams: list[dict]) -> str:
@@ -179,10 +227,16 @@ def preset_to_ffmpeg_args(
     # which breaks progress reporting. Cover art is re-attached post-encode.
     args.extend(["-map", "0:v:0"])
 
-    # Audio stream mapping
+    # Audio stream mapping.
+    #
+    # We resolve the requested language to a concrete audio-stream index rather
+    # than emitting FFmpeg's "0:a:m:language:X" specifier. FFmpeg compares the
+    # language tag literally, so "m:language:nld" matches nothing on a track
+    # tagged "dut" (both are Dutch — 639-2/T vs 639-2/B) and aborts the encode.
     language: str | None = audio.get("language")
     if language:
-        args.extend(["-map", f"0:a:m:language:{language}"])
+        index = _select_audio_stream(source_info.get("audio_streams", []), language)
+        args.extend(["-map", f"0:a:{index}"])
     else:
         args.extend(["-map", "0:a"])
 

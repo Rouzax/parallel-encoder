@@ -80,7 +80,7 @@ def test_prepare_jobs_no_collision(worker_config, tmp_path):
 
     encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
 
-    jobs, skipped = encoder.prepare_jobs(
+    jobs, skipped, _rejected = encoder.prepare_jobs(
         source_files=source_files,
         source_folder=source_folder,
         output_folder=output_folder,
@@ -114,7 +114,7 @@ def test_prepare_jobs_skips_existing_output(worker_config, tmp_path):
 
     encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
 
-    jobs, skipped = encoder.prepare_jobs(
+    jobs, skipped, _rejected = encoder.prepare_jobs(
         source_files=source_files,
         source_folder=source_folder,
         output_folder=output_folder,
@@ -147,7 +147,7 @@ def test_prepare_jobs_overwrite_ignores_existing(worker_config, tmp_path):
 
     encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
 
-    jobs, skipped = encoder.prepare_jobs(
+    jobs, skipped, _rejected = encoder.prepare_jobs(
         source_files=source_files,
         source_folder=source_folder,
         output_folder=output_folder,
@@ -180,7 +180,7 @@ def test_prepare_jobs_test_encode_never_skips(worker_config, tmp_path):
 
     encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
 
-    jobs, skipped = encoder.prepare_jobs(
+    jobs, skipped, _rejected = encoder.prepare_jobs(
         source_files=source_files,
         source_folder=source_folder,
         output_folder=output_folder,
@@ -215,7 +215,7 @@ def test_prepare_jobs_all_skipped(worker_config, tmp_path):
 
     encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
 
-    jobs, skipped = encoder.prepare_jobs(
+    jobs, skipped, _rejected = encoder.prepare_jobs(
         source_files=source_files,
         source_folder=source_folder,
         output_folder=output_folder,
@@ -397,3 +397,56 @@ def test_auto_detect_workers_unknown_codec_uses_default():
     cfg = auto_detect_workers("libfoobar", topology=topo)
     assert cfg.num_workers == 2  # 24 / 12 = 2
     assert cfg.threads_per_worker == 12
+
+
+def test_prepare_jobs_rejects_file_without_requested_audio_language(worker_config, tmp_path):
+    """A file with no track in the preset's language is rejected, not encoded.
+
+    The library has 24 English-only files; running an 'nld' preset over them
+    must skip them up front rather than fail inside FFmpeg mid-encode.
+    """
+    source_folder = str(tmp_path / "source")
+    output_folder = str(tmp_path / "output")
+    (tmp_path / "source").mkdir()
+
+    source_files = [
+        {
+            "path": str(tmp_path / "source" / "dutch.mkv"),
+            "filename": "dutch",
+            "duration": 100.0,
+            "audio_streams": [{"codec": "eac3", "language": "dut", "channels": "6"}],
+        },
+        {
+            "path": str(tmp_path / "source" / "english_only.mkv"),
+            "filename": "english_only",
+            "duration": 100.0,
+            "audio_streams": [{"codec": "eac3", "language": "eng", "channels": "6"}],
+        },
+    ]
+
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough", "language": "nld"},
+        "subtitles": "none",
+    }
+
+    encoder = ParallelEncoder(worker_config=worker_config, ffmpeg_path="/usr/bin/ffmpeg")
+
+    jobs, skipped, rejected = encoder.prepare_jobs(
+        source_files=source_files,
+        source_folder=source_folder,
+        output_folder=output_folder,
+        preset=preset,
+    )
+
+    # The 'dut' file encodes (nld preset matches dut tag); the English-only one does not.
+    assert [Path(j.source_path).name for j in jobs] == ["dutch.mkv"]
+    assert skipped == []
+    assert len(rejected) == 1
+    path, reason = rejected[0]
+    assert Path(path).name == "english_only.mkv"
+    assert "nld" in reason and "eng" in reason
+
+    # A rejected file must not leave an empty output directory behind.
+    assert not (tmp_path / "output" / "english_only").exists()

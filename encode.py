@@ -382,11 +382,12 @@ def _run_encoding(
     dry_run: bool = False,
     overwrite: bool = False,
     on_file_complete: Callable[[EncodingResult], None] | None = None,
-) -> tuple[list[EncodingResult], list[str]]:
+) -> tuple[list[EncodingResult], list[str], list[tuple[str, str]]]:
     """Core encoding routine shared by test and full encode paths.
 
     Returns:
-        Tuple of (encoding results, list of skipped source paths).
+        Tuple of (encoding results, list of skipped source paths, list of
+        ``(source path, reason)`` for files incompatible with the preset).
     """
     encoder = ParallelEncoder(
         worker_config=worker_config,
@@ -395,7 +396,7 @@ def _run_encoding(
     num_workers = worker_config.num_workers
     threads_per_worker = worker_config.threads_per_worker
 
-    jobs, skipped = encoder.prepare_jobs(
+    jobs, skipped, rejected = encoder.prepare_jobs(
         source_files=source_files,
         source_folder=source_folder,
         output_folder=output_folder,
@@ -409,6 +410,12 @@ def _run_encoding(
         console.print(
             f"[yellow]Skipped {len(skipped)} file(s) (output exists).[/yellow] "
             f"Use [bold]--overwrite[/bold] to re-encode."
+        )
+
+    if rejected:
+        console.print(
+            f"[yellow]Skipped {len(rejected)} file(s) incompatible with this preset.[/yellow] "
+            f"Listed in the summary below."
         )
 
     _log = logging.getLogger("parallel-encoder")
@@ -430,10 +437,10 @@ def _run_encoding(
                 test_encode=job.test_encode,
             )
             console.print(f"[dim]{' '.join(cmd)}[/dim]\n")
-        return [], skipped
+        return [], skipped, rejected
 
     if not jobs:
-        return [], skipped
+        return [], skipped, rejected
 
     mode = "test encode" if test_encode else "full encode"
     console.print(
@@ -490,7 +497,7 @@ def _run_encoding(
             start_callback=on_start,
         )
 
-    return results, skipped
+    return results, skipped, rejected
 
 
 @click.command()
@@ -697,7 +704,7 @@ def main(
     if test_encode and not dry_run:
         while True:
             console.print("\n[bold yellow]Running test encode...[/bold yellow]")
-            test_results, _ = _run_encoding(
+            test_results, _, _ = _run_encoding(
                 source_files=source_files,
                 source_folder=source,
                 output_folder=output,
@@ -771,7 +778,7 @@ def main(
             )
         sidecar_cb = _sidecar_cb
 
-    results, skipped_paths = _run_encoding(
+    results, skipped_paths, rejected_paths = _run_encoding(
         source_files=source_files,
         source_folder=source,
         output_folder=output,
@@ -807,6 +814,13 @@ def main(
         for r in failed:
             console.print(f"  [red]-[/red] {Path(r.source_path).name}: {r.error_message or 'unknown error'}")
 
+    if rejected_paths:
+        console.print(
+            f"\n[yellow]{len(rejected_paths)} file(s) skipped as incompatible with this preset:[/yellow]"
+        )
+        for path, reason in rejected_paths:
+            console.print(f"  [yellow]-[/yellow] {Path(path).name}: {reason}")
+
     successful = sum(1 for r in results if r.success)
     total_attempted = len(results) - len(cancelled)
     parts = [f"{successful}/{total_attempted} file(s) encoded successfully"]
@@ -814,6 +828,8 @@ def main(
         parts.append(f"{len(cancelled)} cancelled")
     if skipped_paths:
         parts.append(f"{len(skipped_paths)} skipped")
+    if rejected_paths:
+        parts.append(f"{len(rejected_paths)} incompatible")
     console.print(f"\n[bold green]Done![/bold green] {', '.join(parts)}.")
 
 

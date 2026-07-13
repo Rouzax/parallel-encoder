@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from presets.loader import load_presets, validate_preset, preset_to_ffmpeg_args
+from presets.loader import (
+    AudioLanguageNotFoundError,
+    load_presets,
+    preset_to_ffmpeg_args,
+    validate_preset,
+)
 
 
 def test_validate_preset_valid(sample_preset):
@@ -611,3 +616,88 @@ def test_preset_short_name_strips_prefix():
 def test_preset_short_name_no_match():
     name = "WebM - 720p - AV1 - BT.709 - P8 CRF32"
     assert _preset_short_name(name, "MKV - H265 10-bit") == name
+
+
+# ── Audio language selection ────────────────────────────────────────
+# Regression tests for the 'nld' vs 'dut' bug: FFmpeg's m:language: matcher
+# compares tags literally, so a preset asking for 'nld' failed hard on the
+# entire source library, where Matroska tags every Dutch track 'dut'.
+
+def _lang_preset(language: str) -> dict:
+    return {
+        "container": "mkv",
+        "video": {"codec": "libsvtav1", "crf": 30, "preset": 8},
+        "audio": {"mode": "passthrough", "language": language},
+        "subtitles": "none",
+    }
+
+
+def _source(*languages: str) -> dict:
+    return {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [
+            {"codec": "eac3", "language": lang, "channels": "6"} for lang in languages
+        ],
+    }
+
+
+def _audio_maps(args: list[str]) -> list[str]:
+    """Extract the -map values that select audio streams."""
+    return [
+        args[i + 1]
+        for i, a in enumerate(args)
+        if a == "-map" and ":a" in args[i + 1]
+    ]
+
+
+def test_audio_language_nld_preset_matches_dut_tagged_stream():
+    """The reported bug: preset wants 'nld', source tags Dutch as 'dut'."""
+    args = preset_to_ffmpeg_args(_lang_preset("nld"), _source("eng", "dut"))
+    assert _audio_maps(args) == ["0:a:1"]
+    # The brittle literal-match specifier must be gone entirely.
+    assert not any("m:language" in a for a in args)
+
+
+def test_audio_language_selects_correct_index_when_dut_is_first():
+    args = preset_to_ffmpeg_args(_lang_preset("nld"), _source("dut", "eng"))
+    assert _audio_maps(args) == ["0:a:0"]
+
+
+def test_audio_language_maps_only_first_match_when_several_tracks_match():
+    """Two source files carry two Dutch tracks; keep only the first."""
+    args = preset_to_ffmpeg_args(_lang_preset("nld"), _source("eng", "dut", "dut"))
+    assert _audio_maps(args) == ["0:a:1"]
+
+
+def test_audio_language_matches_regardless_of_iso_variant():
+    """A 'dut' preset must equally match an 'nld'-tagged source."""
+    args = preset_to_ffmpeg_args(_lang_preset("dut"), _source("eng", "nld"))
+    assert _audio_maps(args) == ["0:a:1"]
+
+
+def test_audio_language_english_preset_still_works():
+    args = preset_to_ffmpeg_args(_lang_preset("eng"), _source("eng", "dut"))
+    assert _audio_maps(args) == ["0:a:0"]
+
+
+def test_audio_language_ignores_untagged_streams():
+    """An untagged ('und') track must not be mistaken for the requested language."""
+    with pytest.raises(AudioLanguageNotFoundError):
+        preset_to_ffmpeg_args(_lang_preset("nld"), _source("und", "eng"))
+
+
+def test_audio_language_no_match_raises_with_actionable_message():
+    """24 library files have no Dutch track; they must fail fast, not silently."""
+    with pytest.raises(AudioLanguageNotFoundError) as exc:
+        preset_to_ffmpeg_args(_lang_preset("nld"), _source("eng"))
+    msg = str(exc.value)
+    assert "nld" in msg
+    assert "eng" in msg
+
+
+def test_audio_language_absent_from_preset_maps_all_audio():
+    """Presets with no language filter keep the existing map-everything behaviour."""
+    preset = _lang_preset("nld")
+    del preset["audio"]["language"]
+    args = preset_to_ffmpeg_args(preset, _source("eng", "dut"))
+    assert _audio_maps(args) == ["0:a"]

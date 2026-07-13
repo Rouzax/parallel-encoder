@@ -21,7 +21,7 @@ from encoder.ffmpeg import (
     EncodingResult, build_command, cover_art_attach_args, extract_cover_art,
     find_ffmpeg, run_encode,
 )
-from presets.loader import preset_to_ffmpeg_args
+from presets.loader import AudioLanguageNotFoundError, preset_to_ffmpeg_args
 
 _log = logging.getLogger("parallel-encoder")
 
@@ -348,7 +348,7 @@ class ParallelEncoder:
         test_encode: bool = False,
         test_seconds: int = 120,
         overwrite: bool = False,
-    ) -> tuple[list[EncodingJob], list[str]]:
+    ) -> tuple[list[EncodingJob], list[str], list[tuple[str, str]]]:
         """Build a list of :class:`EncodingJob` from probed source files.
 
         Args:
@@ -364,7 +364,10 @@ class ParallelEncoder:
 
         Returns:
             Tuple of (list of :class:`EncodingJob` ready for :meth:`run`,
-            list of skipped source file paths).
+            list of skipped source file paths (output already exists),
+            list of ``(source path, reason)`` for files that cannot be encoded
+            with this preset, e.g. the source has no audio track in the
+            language the preset requires).
         """
         source_root = Path(source_folder).resolve()
         output_root = Path(output_folder).resolve()
@@ -375,6 +378,7 @@ class ParallelEncoder:
 
         jobs: list[EncodingJob] = []
         skipped: list[str] = []
+        rejected: list[tuple[str, str]] = []
         for source_info in source_files:
             source_path = Path(source_info["path"])
 
@@ -392,9 +396,16 @@ class ParallelEncoder:
                 skipped.append(str(source_path))
                 continue
 
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            # Build the args before creating the output folder, so a rejected
+            # file doesn't leave an empty directory behind.
+            try:
+                preset_args = preset_to_ffmpeg_args(preset, source_info)
+            except AudioLanguageNotFoundError as exc:
+                _log.warning("Cannot encode %s: %s", source_path.name, exc)
+                rejected.append((str(source_path), str(exc)))
+                continue
 
-            preset_args = preset_to_ffmpeg_args(preset, source_info)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
             test_encode_dict: dict | None = None
             if test_encode:
@@ -434,7 +445,7 @@ class ParallelEncoder:
                 )
             seen_outputs[job.output_path] = job.source_path
 
-        return jobs, skipped
+        return jobs, skipped, rejected
 
     # ------------------------------------------------------------------
     # Execution
