@@ -315,8 +315,15 @@ def preset_to_ffmpeg_args(
         src_w = source_info.get("video_width")
         src_h = source_info.get("video_height")
         if src_w is not None and src_h is not None and (src_w > max_w or src_h > max_h):
+            # force_divisible_by=2 rounds the auto-computed side to an even
+            # number. Without it, a non-16:9 source scaled into a 16:9 box
+            # (e.g. 1920x872 -> 1280x581) yields an odd dimension, which
+            # x265/x264 reject under 4:2:0 chroma subsampling ("Picture
+            # height must be an integer multiple of the specified chroma
+            # subsampling").
             vf_filters.append(
-                f"scale={max_w}:{max_h}:force_original_aspect_ratio=decrease"
+                f"scale={max_w}:{max_h}"
+                ":force_original_aspect_ratio=decrease:force_divisible_by=2"
             )
 
     max_fps: int | None = video.get("max_fps")

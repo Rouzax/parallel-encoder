@@ -173,6 +173,34 @@ def test_preset_to_ffmpeg_args_mkv_cover_art_uses_first_video_only():
     assert "-filter:v:0" not in args
 
 
+def test_preset_to_ffmpeg_args_scale_forces_even_dimensions():
+    """Scaling a non-16:9 source into a 16:9 box must keep dimensions even.
+
+    A 1920x872 source fit into a 1280x720 box yields 1280x581 (odd height).
+    x265 with 4:2:0 chroma subsampling rejects odd dimensions ("Picture
+    height must be an integer multiple of the specified chroma subsampling").
+    force_divisible_by=2 rounds the auto-computed side to an even number.
+    """
+    preset = {
+        "container": "mkv",
+        "video": {
+            "codec": "libx265", "crf": 25, "preset": "faster",
+            "max_width": 1280, "max_height": 720,
+        },
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 872,
+        "audio_streams": [],
+        "cover_art_count": 0,
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    vf = args[args.index("-vf") + 1]
+    assert "scale=1280:720:force_original_aspect_ratio=decrease" in vf
+    assert "force_divisible_by=2" in vf
+
+
 def test_preset_to_ffmpeg_args_mkv_no_cover_art_maps_first_video():
     """MKV without cover art should map only first video stream."""
     preset = {
