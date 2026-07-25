@@ -116,11 +116,24 @@ presets:
       max_height: 720
       max_fps: 30          # optional, caps frame rate (won't upscale lower fps)
       pix_fmt: yuv420p
-      colorspace: bt709
+      colorspace: bt709    # converts/tone maps the source to BT.709 SDR, see below
     audio:
       mode: passthrough    # or transcode with codec/bitrate
     subtitles: none        # all, first, or none
 ```
+
+### Colour conversion (`colorspace: bt709`)
+
+Setting `colorspace: bt709` on a preset's `video` section tells the encoder to make sure the output ends up in BT.709 SDR (the standard colour space for SDR video), converting the source if needed. What happens depends on what the source actually is:
+
+- **HDR source** (HDR10, using the PQ transfer curve, or HLG): the picture is tone mapped down to BT.709 SDR, and the source's HDR metadata (mastering display info, MaxCLL/MaxFALL light-level tags, HDR10+ dynamic metadata) is removed from the output. Without removing it, the output would still advertise itself as an HDR master even though the pixels are now SDR, which can push some players into HDR display mode for a picture that no longer has HDR range. Dolby Vision metadata is dropped as well; that is expected, since the target is SDR.
+- **Dolby Vision profile 5**: the file is rejected outright and the batch moves on to the next file. Profile 5 has no HDR10-compatible base layer, so FFmpeg cannot decode it correctly without applying the separate RPU metadata; encoding it anyway would produce a picture with fluorescent green and purple patches. Other Dolby Vision profiles (7, 8, 10) do have a usable base layer and are tone mapped normally.
+- **SDR source with PAL or NTSC primaries** (`bt470bg`, `smpte170m`, `bt470m`): converted to BT.709 with a lightweight colour-space conversion. This is unchanged from before.
+- **Source already BT.709, untagged, or using primaries the encoder does not recognise**: left alone. For the unrecognised case, a warning is logged rather than guessing at a conversion; guessing incorrectly used to be treated as PAL, which is what made HDR sources come out looking washed out.
+
+If a preset omits `colorspace: bt709`, colour is passed through untouched, including HDR: an HDR source stays HDR in the output. When passing HDR through, use a 10-bit `pix_fmt` such as `yuv420p10le`; an 8-bit `pix_fmt` like `yuv420p` combined with HDR passthrough produces visible banding, and the output still carries its HDR tags.
+
+Because of this, a preset whose name advertises BT.709 (like the `webm-720p-av1-bt709-p6-crf35` example above) should always carry `colorspace: bt709`, and vice versa: a preset that carries the key should have BT.709 in its name. The test suite checks bundled presets for this mismatch in both directions, so getting it wrong fails tests.
 
 ## NUMA Support
 

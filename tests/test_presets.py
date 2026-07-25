@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from presets.loader import (
     AudioLanguageNotFoundError,
+    UnsupportedSourceColourError,
     load_presets,
     preset_to_ffmpeg_args,
     validate_preset,
@@ -749,3 +752,201 @@ def test_audio_language_absent_from_preset_maps_all_audio():
     del preset["audio"]["language"]
     args = preset_to_ffmpeg_args(preset, _source("eng", "dut"))
     assert _audio_maps(args) == ["0:a"]
+
+
+# ── HDR to SDR tone mapping ─────────────────────────────────────
+
+def _bt709_preset() -> dict:
+    return {
+        "container": "mkv",
+        "video": {
+            "codec": "libx265", "crf": 25, "preset": "faster",
+            "max_width": 1280, "max_height": 720,
+            "pix_fmt": "yuv420p10le", "colorspace": "bt709",
+        },
+        "audio": {"mode": "passthrough"},
+        "subtitles": "none",
+    }
+
+
+def _hdr_source(**overrides) -> dict:
+    info = {
+        "video_width": 3840, "video_height": 2160,
+        "audio_streams": [],
+        "video_colour_primaries": "bt2020",
+        "video_colour_transfer": "smpte2084",
+        "video_colour_matrix": "bt2020nc",
+    }
+    info.update(overrides)
+    return info
+
+
+def _vf(args: list[str]) -> str:
+    assert "-vf" in args, "expected a video filter chain"
+    return args[args.index("-vf") + 1]
+
+
+def test_hdr_pq_source_gets_tonemap_not_colorspace_filter():
+    """PQ HDR must be tone mapped. The colorspace filter cannot convert PQ and
+    silently produces washed-out output when told the input is SD."""
+    args = preset_to_ffmpeg_args(_bt709_preset(), _hdr_source())
+    vf = _vf(args)
+    assert "tonemap" in vf, "HDR source must be tone mapped"
+    assert "zscale" in vf, "tone mapping needs zscale for the linear light step"
+    assert "bt601" not in vf, "must never label an HDR source as SD"
+    assert "colorspace=all=bt709" not in vf, "colorspace filter cannot handle PQ"
+
+
+def test_hdr_tonemap_chain_targets_bt709_sdr():
+    """Output must be fully retagged to BT.709 SDR, not left as BT.2020/PQ."""
+    vf = _vf(preset_to_ffmpeg_args(_bt709_preset(), _hdr_source()))
+    assert "p=bt709" in vf
+    assert "t=bt709" in vf
+    assert "m=bt709" in vf
+
+
+def test_hdr_tonemap_runs_after_scaling():
+    """Scaling 4K down before tone mapping keeps the expensive float work on
+    the smaller frame."""
+    vf = _vf(preset_to_ffmpeg_args(_bt709_preset(), _hdr_source()))
+    assert vf.index("scale=1280:720") < vf.index("tonemap")
+
+
+def test_hlg_source_gets_tonemapped():
+    """HLG is the other HDR transfer and needs the same treatment as PQ."""
+    source = _hdr_source(video_colour_transfer="arib-std-b67")
+    vf = _vf(preset_to_ffmpeg_args(_bt709_preset(), source))
+    assert "tonemap" in vf
+
+
+def test_dolby_vision_profile_5_is_rejected():
+    """Profile 5 has no HDR10 base layer, so FFmpeg decodes it without the RPU
+    and yields a green/purple cast. Reject rather than emit garbage."""
+    source = _hdr_source(dv_profile=5, dv_bl_compatibility_id=0)
+    with pytest.raises(UnsupportedSourceColourError, match="[Pp]rofile 5"):
+        preset_to_ffmpeg_args(_bt709_preset(), source)
+
+
+def test_dolby_vision_profile_8_1_is_tonemapped():
+    """Profile 8.1 has an HDR10-compatible base layer, so normal tone mapping
+    is correct and DV metadata is dropped on purpose."""
+    source = _hdr_source(dv_profile=8, dv_bl_compatibility_id=1)
+    vf = _vf(preset_to_ffmpeg_args(_bt709_preset(), source))
+    assert "tonemap" in vf
+
+
+def test_unknown_primaries_are_left_alone():
+    """An unrecognised primaries value must not be guessed as PAL."""
+    source = {
+        "video_width": 720, "video_height": 576,
+        "audio_streams": [],
+        "video_colour_primaries": "film",
+        "video_colour_transfer": "bt709",
+    }
+    args = preset_to_ffmpeg_args(_bt709_preset(), source)
+    joined = " ".join(args)
+    assert "bt601" not in joined, "must not guess PAL for unknown primaries"
+    assert "colorspace=" not in joined
+
+
+def test_sdr_pal_source_still_converts_to_bt709():
+    """The existing SD conversion path must keep working unchanged."""
+    source = {
+        "video_width": 720, "video_height": 576,
+        "audio_streams": [],
+        "video_colour_primaries": "bt470bg",
+        "video_colour_transfer": "bt709",
+    }
+    vf = _vf(preset_to_ffmpeg_args(_bt709_preset(), source))
+    assert "colorspace=all=bt709:iall=bt601-6-625" in vf
+    assert "tonemap" not in vf
+
+
+def test_hdr_source_without_bt709_preset_is_not_tonemapped():
+    """Presets that keep the source colour space must not gain a tone map."""
+    preset = _bt709_preset()
+    del preset["video"]["colorspace"]
+    args = preset_to_ffmpeg_args(preset, _hdr_source())
+    assert "tonemap" not in " ".join(args)
+
+
+def test_hdr_tonemap_drops_stale_hdr_metadata():
+    """Tone mapping must also strip the source's HDR volume metadata, or the
+    SDR output still advertises a 1000-nit BT.2020 mastering display and a
+    player may switch into HDR mode."""
+    vf = _vf(preset_to_ffmpeg_args(_bt709_preset(), _hdr_source()))
+    assert "sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA" in vf
+    assert "sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL" in vf
+    assert "sidedata=mode=delete:type=DYNAMIC_HDR_PLUS" in vf
+
+
+def test_sdr_conversion_does_not_touch_side_data():
+    """SDR sources carry no HDR volume metadata, so no deletes are emitted."""
+    source = {
+        "video_width": 720, "video_height": 576,
+        "audio_streams": [],
+        "video_colour_primaries": "bt470bg",
+        "video_colour_transfer": "bt709",
+    }
+    assert "sidedata" not in _vf(preset_to_ffmpeg_args(_bt709_preset(), source))
+
+
+# ── Bundled preset invariants ───────────────────────────────────
+#
+# These guard the class of bug where a preset's colour handling silently
+# disagrees with what its name promises, which is how HDR sources ended up
+# being encoded as if they were SD.
+
+def _bundled_presets() -> dict:
+    return load_presets(Path(__file__).resolve().parent.parent / "config" / "presets.yaml")
+
+
+def test_bundled_preset_names_match_colour_behaviour():
+    """A preset advertising BT.709 must actually convert to BT.709, and one
+    that converts must say so, so the name is never misleading."""
+    mismatched = [
+        key for key, preset in _bundled_presets().items()
+        if ("BT.709" in preset["display_name"])
+        != (preset["video"].get("colorspace") == "bt709")
+    ]
+    assert not mismatched, f"name/behaviour mismatch: {mismatched}"
+
+
+def test_bundled_8bit_presets_always_convert_to_bt709():
+    """An 8-bit preset must never pass HDR through: PQ in 8 bits bands badly
+    and still carries HDR tags, so players may switch to HDR mode."""
+    offenders = [
+        key for key, preset in _bundled_presets().items()
+        if "10le" not in (preset["video"].get("pix_fmt") or "")
+        and preset["video"].get("colorspace") != "bt709"
+    ]
+    assert not offenders, f"8-bit presets that would emit 8-bit HDR: {offenders}"
+
+
+def test_bundled_presets_tonemap_hdr_when_targeting_bt709():
+    """Every BT.709 preset must tone map a real HDR source."""
+    for key, preset in _bundled_presets().items():
+        if preset["video"].get("colorspace") != "bt709":
+            continue
+        args = preset_to_ffmpeg_args(preset, _hdr_source(audio_streams=[
+            {"codec": "eac3", "language": "eng", "channels": "6"},
+            {"codec": "eac3", "language": "nld", "channels": "6"},
+        ]))
+        assert "tonemap" in " ".join(args), f"{key} does not tone map HDR"
+
+
+def test_dolby_vision_profile_7_bluray_is_tonemapped():
+    """Profile 7 (dual-layer Blu-ray DV) reports compatibility id 6 and has an
+    HDR10 base layer, so it must tone map rather than be rejected. Only the
+    "no standalone base layer" id (0, used by profile 5) is unusable."""
+    source = _hdr_source(dv_profile=7, dv_bl_compatibility_id=6)
+    vf = _vf(preset_to_ffmpeg_args(_bt709_preset(), source))
+    assert "tonemap" in vf
+
+
+def test_dolby_vision_profile_8_4_hlg_is_tonemapped():
+    """Profile 8.4 has an HLG base layer, which tone maps like any other HDR."""
+    source = _hdr_source(
+        video_colour_transfer="arib-std-b67", dv_profile=8, dv_bl_compatibility_id=4
+    )
+    assert "tonemap" in _vf(preset_to_ffmpeg_args(_bt709_preset(), source))

@@ -21,7 +21,11 @@ from encoder.ffmpeg import (
     EncodingResult, build_command, cover_art_attach_args, extract_cover_art,
     find_ffmpeg, run_encode,
 )
-from presets.loader import AudioLanguageNotFoundError, preset_to_ffmpeg_args
+from presets.loader import (
+    AudioLanguageNotFoundError,
+    UnsupportedSourceColourError,
+    preset_to_ffmpeg_args,
+)
 
 _log = logging.getLogger("parallel-encoder")
 
@@ -400,7 +404,7 @@ class ParallelEncoder:
             # file doesn't leave an empty directory behind.
             try:
                 preset_args = preset_to_ffmpeg_args(preset, source_info)
-            except AudioLanguageNotFoundError as exc:
+            except (AudioLanguageNotFoundError, UnsupportedSourceColourError) as exc:
                 _log.warning("Cannot encode %s: %s", source_path.name, exc)
                 rejected.append((str(source_path), str(exc)))
                 continue

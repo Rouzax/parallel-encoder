@@ -27,6 +27,46 @@ _OPUS_BITRATE_DEFAULT = "160k"
 _REQUIRED_VIDEO_KEYS = {"codec", "crf"}
 _VALID_AUDIO_MODES = {"passthrough", "transcode"}
 
+# Transfer characteristics that mean the source is HDR. These need real tone
+# mapping: the `colorspace` filter only swaps matrix/primaries and cannot
+# convert a PQ or HLG curve to SDR gamma.
+_HDR_TRANSFERS = frozenset({"smpte2084", "arib-std-b67"})
+
+# SDR primaries we can convert to BT.709 with the cheap `colorspace` filter,
+# mapped to that filter's input-colourspace name. Anything not listed here is
+# left untouched rather than guessed at.
+_SDR_IALL_BY_PRIMARIES: dict[str, str] = {
+    "bt470bg": "bt601-6-625",     # PAL
+    "smpte170m": "bt601-6-525",   # NTSC
+    "bt470m": "bt601-6-525",      # NTSC (older)
+}
+
+# Reference white for the linear-light step, in cd/m². 100 nits is the SDR
+# diffuse-white convention, so anything above it becomes highlight detail for
+# the tone mapper to roll off.
+_TONEMAP_NOMINAL_PEAK_NITS = 100
+
+# Tone-mapping operator. hable preserves shadow and highlight detail better
+# than `reinhard` and does not clip like `clip`/`linear`. desat=0 disables the
+# filter's highlight desaturation, which otherwise greys out bright colour.
+_TONEMAP_OPERATOR = "hable"
+_TONEMAP_DESATURATION = 0
+
+# DV base-layer compatibility id meaning "no standalone base layer". Profile 5
+# uses this: its base layer is IPT-PQ-C2, not HDR10.
+_DV_BL_COMPAT_NONE = 0
+
+# Frame side data that describes the source's HDR volume. zscale and tonemap
+# convert the pixels but leave these attached, so without an explicit delete
+# FFmpeg hands them to the encoder and the Matroska muxer writes them as
+# colour elements. The result is a BT.709 SDR picture still advertising a
+# 1000-nit BT.2020 mastering display, which can push a player into HDR mode.
+_HDR_FRAME_SIDE_DATA_TO_DROP = (
+    "MASTERING_DISPLAY_METADATA",
+    "CONTENT_LIGHT_LEVEL",
+    "DYNAMIC_HDR_PLUS",
+)
+
 
 class AudioLanguageNotFoundError(ValueError):
     """The source has no audio stream in the language the preset asks for.
@@ -34,6 +74,93 @@ class AudioLanguageNotFoundError(ValueError):
     Raised instead of letting FFmpeg fail mid-encode, so the caller can skip
     the file up front and report it.
     """
+
+
+class UnsupportedSourceColourError(ValueError):
+    """The source's colour encoding cannot be converted correctly.
+
+    Raised instead of emitting a command that would produce visibly wrong
+    output, so the caller can skip the file up front and report it.
+    """
+
+
+def _build_colour_filters(
+    video: dict,
+    source_info: dict,
+) -> list[str]:
+    """Return the filters needed to reach the preset's target colour space.
+
+    Only `colorspace: bt709` is handled; presets without it keep whatever the
+    source uses. HDR sources get a real tone map, SDR sources with known
+    non-BT.709 primaries get the cheap `colorspace` filter, and anything else
+    is left alone.
+
+    Raises UnsupportedSourceColourError for Dolby Vision profile 5, whose base
+    layer decodes to a green/purple mess without the RPU applied.
+    """
+    if video.get("colorspace") != "bt709":
+        return []
+
+    primaries: str | None = source_info.get("video_colour_primaries")
+    transfer: str | None = source_info.get("video_colour_transfer")
+
+    if transfer in _HDR_TRANSFERS:
+        # FFmpeg decodes the DV base layer and ignores the RPU. That is fine
+        # for profiles 7/8/10, whose base layer is standalone HDR10, SDR or
+        # HLG. Profile 5 has no standalone base layer, so the decoded pixels
+        # are IPT-PQ-C2 and tone mapping them yields fluorescent green and
+        # purple. Refuse instead.
+        dv_profile: int | None = source_info.get("dv_profile")
+        dv_compat: int | None = source_info.get("dv_bl_compatibility_id")
+        if dv_profile == 5 or (dv_profile is not None and dv_compat == _DV_BL_COMPAT_NONE):
+            raise UnsupportedSourceColourError(
+                f"Dolby Vision profile {dv_profile} has no HDR10-compatible base "
+                "layer, so it cannot be tone mapped without applying the RPU "
+                "(needs dovi_tool or a libplacebo build with DV support)"
+            )
+
+        _log.debug(
+            "HDR source: transfer=%s primaries=%s dv_profile=%s -> tone mapping to BT.709 SDR",
+            transfer, primaries, dv_profile,
+        )
+        # Linearise, compress the dynamic range, then retag as BT.709 SDR.
+        # tin= is set explicitly so the chain does not depend on the decoder
+        # propagating the transfer tag. format=gbrpf32le is required because
+        # `tonemap` only operates on linear floating-point input.
+        return [
+            f"zscale=tin={transfer}:t=linear:npl={_TONEMAP_NOMINAL_PEAK_NITS}",
+            "format=gbrpf32le",
+            f"tonemap=tonemap={_TONEMAP_OPERATOR}:desat={_TONEMAP_DESATURATION}",
+            "zscale=p=bt709:t=bt709:m=bt709:r=tv",
+            # Drop the now-meaningless HDR volume metadata so the output does
+            # not advertise an HDR mastering display it no longer has.
+            *(
+                f"sidedata=mode=delete:type={sd}"
+                for sd in _HDR_FRAME_SIDE_DATA_TO_DROP
+            ),
+        ]
+
+    if primaries in ("bt709", None):
+        # Already BT.709, or untagged and therefore not safe to reinterpret.
+        return []
+
+    iall: str | None = _SDR_IALL_BY_PRIMARIES.get(primaries)
+    if iall is None:
+        # Guessing here is what made HDR sources come out washed out: an
+        # unrecognised value was treated as PAL and the real transfer curve
+        # was never converted. Leave the source alone and say so.
+        _log.warning(
+            "Unrecognised colour primaries %r (transfer=%s); leaving colour "
+            "untouched rather than guessing a conversion",
+            primaries, transfer,
+        )
+        return []
+
+    _log.debug(
+        "SDR source: primaries=%s -> colorspace conversion to BT.709 (iall=%s)",
+        primaries, iall,
+    )
+    return [f"colorspace=all=bt709:iall={iall}"]
 
 
 def _select_audio_stream(audio_streams: list[dict], language: str) -> int:
@@ -338,19 +465,9 @@ def preset_to_ffmpeg_args(
         if source_fps is not None and source_fps > max_fps:
             vf_filters.append(f"fps={max_fps}")
 
-    colorspace: str | None = video.get("colorspace")
-    if colorspace == "bt709":
-        source_primaries = source_info.get("video_colour_primaries")
-        # Skip conversion if source is already BT.709 or unknown
-        if source_primaries not in ("bt709", None):
-            # Map known primaries to FFmpeg's colorspace input name
-            iall_map = {
-                "bt470bg": "bt601-6-625",       # PAL
-                "smpte170m": "bt601-6-525",      # NTSC
-                "bt470m": "bt601-6-525",         # NTSC (older)
-            }
-            iall = iall_map.get(source_primaries, "bt601-6-625")
-            vf_filters.append(f"colorspace=all=bt709:iall={iall}")
+    # Colour conversion runs after scaling so the expensive floating-point
+    # tone-mapping work happens on the smaller frame.
+    vf_filters.extend(_build_colour_filters(video, source_info))
 
     if vf_filters:
         # Scope filter to main video only when cover art streams are mapped

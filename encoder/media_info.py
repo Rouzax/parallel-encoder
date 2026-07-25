@@ -86,6 +86,10 @@ def probe_file(path: str | Path, ffprobe_path: str = "ffprobe") -> dict:
     video_height: int | None = None
     video_bitrate: int | None = None
     video_colour_primaries: str | None = None
+    video_colour_transfer: str | None = None
+    video_colour_matrix: str | None = None
+    dv_profile: int | None = None
+    dv_bl_compatibility_id: int | None = None
     video_fps: float | None = None
 
     if video is not None:
@@ -95,6 +99,24 @@ def probe_file(path: str | Path, ffprobe_path: str = "ffprobe") -> dict:
         raw_br: str | None = video.get("bit_rate")
         video_bitrate = int(raw_br) if raw_br is not None else None
         video_colour_primaries = video.get("color_primaries")
+        # Transfer characteristics identify HDR (smpte2084 = PQ,
+        # arib-std-b67 = HLG). Primaries alone cannot: a BT.2020 source may
+        # still be SDR, and tone mapping keys off the transfer curve.
+        video_colour_transfer = video.get("color_transfer")
+        video_colour_matrix = video.get("color_space")
+
+        # Dolby Vision configuration, when present. dv_bl_compatibility_id
+        # says whether the base layer stands alone: 1 = HDR10, 2 = SDR,
+        # 4 = HLG, 0 = none (profile 5, needs the RPU applied to look right).
+        for sd in video.get("side_data_list", []):
+            if sd.get("side_data_type") == "DOVI configuration record":
+                raw_profile = sd.get("dv_profile")
+                dv_profile = int(raw_profile) if raw_profile is not None else None
+                raw_compat = sd.get("dv_bl_signal_compatibility_id")
+                dv_bl_compatibility_id = (
+                    int(raw_compat) if raw_compat is not None else None
+                )
+                break
         # Parse frame rate from "num/den" fraction (e.g. "30000/1001")
         raw_fps: str | None = video.get("r_frame_rate")
         if raw_fps and "/" in raw_fps:
@@ -137,6 +159,11 @@ def probe_file(path: str | Path, ffprobe_path: str = "ffprobe") -> dict:
         path.name, video_codec, video_width, video_height,
         video_fps or 0.0, total_bitrate, duration,
     )
+    _log.debug(
+        "Colour %s: primaries=%s transfer=%s matrix=%s dv_profile=%s dv_bl_compat=%s",
+        path.name, video_colour_primaries, video_colour_transfer,
+        video_colour_matrix, dv_profile, dv_bl_compatibility_id,
+    )
 
     return {
         "path": str(path),
@@ -148,6 +175,10 @@ def probe_file(path: str | Path, ffprobe_path: str = "ffprobe") -> dict:
         "video_height": video_height,
         "video_bitrate": video_bitrate,
         "video_colour_primaries": video_colour_primaries,
+        "video_colour_transfer": video_colour_transfer,
+        "video_colour_matrix": video_colour_matrix,
+        "dv_profile": dv_profile,
+        "dv_bl_compatibility_id": dv_bl_compatibility_id,
         "video_fps": video_fps,
         "total_bitrate": total_bitrate,
         "audio_streams": audio_streams,

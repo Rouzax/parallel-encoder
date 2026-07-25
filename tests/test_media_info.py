@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from unittest.mock import patch
 
@@ -108,3 +109,55 @@ def test_probe_folder_continues_on_single_file_error(tmp_path):
     assert call_count["n"] == 2, "Both files should have been attempted"
     assert len(results) == 1, "Only the good file should be in results"
     assert results[0]["filename"] == "good"
+
+
+def _probe_with_streams(streams: list[dict]) -> dict:
+    """Run probe_file against a canned ffprobe JSON payload."""
+    payload = json.dumps({"format": {"duration": "10.0", "size": "1000"},
+                          "streams": streams}).encode()
+    with patch("encoder.media_info.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["ffprobe"], returncode=0, stdout=payload, stderr=b""
+        )
+        return probe_file("/fake/video.mkv")
+
+
+def test_probe_file_extracts_hdr_colour_properties():
+    """Transfer and matrix must be probed: primaries alone cannot identify HDR."""
+    info = _probe_with_streams([{
+        "codec_type": "video", "codec_name": "hevc",
+        "width": 3840, "height": 2160,
+        "color_primaries": "bt2020",
+        "color_transfer": "smpte2084",
+        "color_space": "bt2020nc",
+    }])
+    assert info["video_colour_primaries"] == "bt2020"
+    assert info["video_colour_transfer"] == "smpte2084"
+    assert info["video_colour_matrix"] == "bt2020nc"
+
+
+def test_probe_file_colour_properties_absent_are_none():
+    """Untagged sources must report None, not a guessed value."""
+    info = _probe_with_streams([{
+        "codec_type": "video", "codec_name": "h264",
+        "width": 1920, "height": 1080,
+    }])
+    assert info["video_colour_transfer"] is None
+    assert info["video_colour_matrix"] is None
+    assert info["dv_profile"] is None
+
+
+def test_probe_file_extracts_dolby_vision_profile():
+    """DV profile and base-layer compatibility drive whether we can tone map."""
+    info = _probe_with_streams([{
+        "codec_type": "video", "codec_name": "hevc",
+        "width": 3840, "height": 2160,
+        "color_primaries": "bt2020", "color_transfer": "smpte2084",
+        "side_data_list": [{
+            "side_data_type": "DOVI configuration record",
+            "dv_profile": 8,
+            "dv_bl_signal_compatibility_id": 1,
+        }],
+    }])
+    assert info["dv_profile"] == 8
+    assert info["dv_bl_compatibility_id"] == 1
