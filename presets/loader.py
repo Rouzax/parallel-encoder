@@ -247,8 +247,14 @@ def preset_to_ffmpeg_args(
         args.extend(["-map", "0:s:0?"])
     # "none" — no subtitle mapping
 
-    # Attachment streams (cover art, fonts) — Matroska-based containers only
-    if container in ("mkv", "matroska", "webm"):
+    # Attachment streams (cover art, fonts) — MKV only.
+    #
+    # WebM is deliberately excluded. Attachments (and attached-picture cover
+    # art) are non-standard in WebM, add extra streams that media servers list
+    # as additional video/attachment tracks, and serve no purpose here because
+    # external sidecar artwork (-poster/-thumb/-fanart .jpg) already covers it.
+    # Keeping WebM output to just video + audio (+ subtitles) avoids that.
+    if container in ("mkv", "matroska"):
         args.extend(["-map", "0:t?"])
 
     # ── Video codec ─────────────────────────────────────────────
@@ -378,7 +384,9 @@ def preset_to_ffmpeg_args(
         args.extend(["-c:s", "copy"])
 
     # ── Attachments codec ──────────────────────────────────────
-    if container in ("mkv", "matroska", "webm"):
+    # MKV only, mirroring the attachment stream mapping above. WebM does not
+    # carry attachments, so there is nothing to copy.
+    if container in ("mkv", "matroska"):
         args.extend(["-c:t", "copy"])
 
     # ── Strip stale per-stream stats tags ─────────────────────

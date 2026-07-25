@@ -106,8 +106,9 @@ def test_preset_to_ffmpeg_args_mkv_includes_attachments():
     assert args[args.index("-c:t") + 1] == "copy"
 
 
-def test_preset_to_ffmpeg_args_webm_includes_attachments():
-    """WebM uses the same Matroska muxer, so it should also include attachments."""
+def test_preset_to_ffmpeg_args_webm_excludes_attachments():
+    """WebM must not carry attachments: they are non-standard in WebM and add
+    stray streams. Artwork is handled by external sidecar files instead."""
     preset = {
         "container": "webm",
         "video": {"codec": "libvpx-vp9", "crf": 30, "speed": 4},
@@ -116,8 +117,8 @@ def test_preset_to_ffmpeg_args_webm_includes_attachments():
     }
     source_info = {"video_width": 1920, "video_height": 1080, "audio_streams": []}
     args = preset_to_ffmpeg_args(preset, source_info)
-    assert "0:t?" in args
-    assert "-c:t" in args
+    assert "0:t?" not in args
+    assert "-c:t" not in args
 
 
 def test_preset_to_ffmpeg_args_mp4_excludes_attachments():
@@ -399,6 +400,25 @@ def test_preset_to_ffmpeg_args_webm_ignores_cover_art():
     # WebM must use -vf, not -filter:v:0 (even if source has cover art)
     assert "-vf" in args
     assert "-filter:v:0" not in args
+    # WebM must not embed attachments; artwork is handled by external sidecars.
+    assert "0:t?" not in args
+
+
+def test_preset_to_ffmpeg_args_mkv_maps_attachments():
+    """MKV keeps attachment passthrough so fonts and cover art stay embedded."""
+    preset = {
+        "container": "mkv",
+        "video": {"codec": "libx265", "crf": 22, "preset": "medium"},
+        "audio": {"mode": "passthrough"},
+        "subtitles": "all",
+    }
+    source_info = {
+        "video_width": 1920, "video_height": 1080,
+        "audio_streams": [],
+        "cover_art_count": 1,
+    }
+    args = preset_to_ffmpeg_args(preset, source_info)
+    assert "0:t?" in args
 
 
 def test_preset_bt709_colorspace_skips_already_bt709():
